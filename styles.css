@@ -1,0 +1,487 @@
+/* ============ Task Maker Container ============ */
+.task-maker-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 8px;
+	overflow-y: auto;
+}
+
+/* ============ Navigation Bar ============ */
+.tm-nav-bar {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tm-mode-tabs {
+	display: flex;
+	gap: 4px;
+}
+
+.tm-mode-tab {
+	padding: 6px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 13px;
+	transition: all 0.15s ease;
+}
+
+.tm-mode-tab:hover {
+	background: var(--background-modifier-hover);
+}
+
+.tm-mode-tab-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.tm-time-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.tm-phase-controls {
+	display: flex;
+	align-items: center;
+}
+
+/* ============ Breadcrumb ============ */
+.tm-breadcrumb {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+.tm-breadcrumb-arrow {
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 10px;
+}
+
+.tm-breadcrumb-arrow:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.tm-breadcrumb-arrow:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+.tm-breadcrumb-sep {
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.tm-breadcrumb-item {
+	font-size: 13px;
+	padding: 2px 4px;
+	border-radius: 3px;
+}
+
+.tm-breadcrumb-link {
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.tm-breadcrumb-link:hover {
+	background: var(--background-modifier-hover);
+	text-decoration: underline;
+}
+
+.tm-breadcrumb-current {
+	color: var(--text-normal);
+	font-weight: 600;
+}
+
+.tm-breadcrumb-children {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+	margin-top: 4px;
+}
+
+.tm-breadcrumb-child {
+	padding: 3px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 12px;
+}
+
+.tm-breadcrumb-child:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+/* ============ Today Button ============ */
+.tm-today-btn {
+	padding: 4px 12px;
+	border: 1px solid var(--interactive-accent);
+	border-radius: 4px;
+	background: transparent;
+	color: var(--interactive-accent);
+	cursor: pointer;
+	font-size: 12px;
+	align-self: flex-start;
+	margin-top: 4px;
+}
+
+.tm-today-btn:hover {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+/* ============ Phase Selector ============ */
+.tm-phase-selector {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.tm-phase-label {
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+.tm-phase-select {
+	padding: 4px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: 13px;
+}
+
+/* ============ Context Panel ============ */
+.tm-context-panel {
+	margin-bottom: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+}
+
+.tm-context-header {
+	padding: 8px 12px;
+	background: var(--background-secondary);
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+	border-radius: 8px 8px 0 0;
+}
+
+.tm-context-header:hover {
+	background: var(--background-modifier-hover);
+}
+
+.tm-context-header::before {
+	content: '\25BC ';
+	font-size: 10px;
+}
+
+.tm-context-header.tm-collapsed::before {
+	content: '\25B6 ';
+}
+
+.tm-context-header.tm-collapsed {
+	border-radius: 8px;
+}
+
+.tm-context-summary {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0;
+}
+
+.tm-context-cell {
+	padding: 8px 10px;
+	background: var(--background-primary);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.tm-context-cell:nth-child(odd) {
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+.tm-context-label {
+	font-size: 11px;
+	color: var(--text-faint);
+	margin-bottom: 2px;
+}
+
+.tm-context-count {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.tm-context-bar {
+	height: 4px;
+	background: var(--background-modifier-border);
+	border-radius: 2px;
+	margin-top: 4px;
+	overflow: hidden;
+}
+
+.tm-context-bar-fill {
+	height: 100%;
+	background: var(--tm-quadrant-color, var(--interactive-accent));
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+/* ============ Quadrant Grid ============ */
+.tm-quadrant-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	grid-template-rows: 1fr 1fr;
+	gap: 8px;
+	flex: 1;
+	min-height: 400px;
+}
+
+.tm-quadrant {
+	display: flex;
+	flex-direction: column;
+	border: 2px solid var(--tm-quadrant-color, var(--background-modifier-border));
+	border-radius: 8px;
+	overflow: hidden;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tm-quadrant-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	background: color-mix(in srgb, var(--tm-quadrant-color, #888) 10%, var(--background-primary));
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tm-quadrant-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--tm-quadrant-color, var(--text-normal));
+}
+
+.tm-quadrant-count {
+	font-size: 11px;
+	color: var(--text-faint);
+	background: var(--background-secondary);
+	padding: 1px 6px;
+	border-radius: 10px;
+}
+
+.tm-task-list {
+	flex: 1;
+	overflow-y: auto;
+	padding: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+/* ============ Task Item ============ */
+.tm-task-item {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 4px 8px;
+	padding: 6px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	cursor: grab;
+	transition: opacity 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.tm-task-item:hover {
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+	border-color: var(--background-modifier-border-hover);
+}
+
+.tm-task-item:active {
+	cursor: grabbing;
+}
+
+.tm-task-item.tm-dragging {
+	opacity: 0.4;
+	transform: scale(0.98);
+}
+
+.tm-task-item.tm-task-completed .tm-task-text {
+	text-decoration: line-through;
+	color: var(--text-faint);
+}
+
+.tm-task-checkbox {
+	margin-top: 2px;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.tm-task-text {
+	flex: 1;
+	min-width: 0;
+	font-size: 13px;
+	color: var(--text-normal);
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.tm-task-source {
+	width: 100%;
+	font-size: 11px;
+	color: var(--text-faint);
+	cursor: pointer;
+	padding: 2px 4px 0 22px;
+	border-radius: 3px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tm-task-source:hover {
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+}
+
+/* ============ Drag & Drop Visual Feedback ============ */
+.tm-quadrant.tm-drag-over {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--interactive-accent) 5%, var(--background-primary));
+}
+
+.tm-unassigned-tray.tm-drag-over {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+/* ============ Unassigned Tray ============ */
+.tm-unassigned-tray {
+	margin-top: 8px;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 8px;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tm-unassigned-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.tm-unassigned-header::before {
+	content: '\25BC ';
+	font-size: 10px;
+	color: var(--text-faint);
+}
+
+.tm-unassigned-header.tm-collapsed::before {
+	content: '\25B6 ';
+}
+
+.tm-unassigned-title {
+	font-size: 12px;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+/* ============ Associated Notes ============ */
+.tm-note-content {
+	margin-top: 12px;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 8px;
+}
+
+.tm-note-header {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.tm-note-item {
+	margin-bottom: 8px;
+	padding: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.tm-note-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text-accent);
+	cursor: pointer;
+	margin-bottom: 4px;
+}
+
+.tm-note-title:hover {
+	text-decoration: underline;
+}
+
+.tm-note-extract {
+	font-size: 12px;
+	color: var(--text-muted);
+	white-space: pre-wrap;
+	line-height: 1.5;
+	max-height: 150px;
+	overflow-y: auto;
+}
+
+/* ============ Settings ============ */
+.tm-settings-phase-list {
+	margin-bottom: 12px;
+}
+
+.tm-settings-phase-item {
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tm-settings-add-phase {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* ============ Compact Mode ============ */
+.task-maker-container.tm-compact .tm-task-item {
+	padding: 3px 6px;
+}
+
+.task-maker-container.tm-compact .tm-task-text {
+	font-size: 12px;
+}
+
+.task-maker-container.tm-compact .tm-task-source {
+	display: none;
+}
+
+.task-maker-container.tm-compact .tm-quadrant-grid {
+	min-height: 300px;
+}
