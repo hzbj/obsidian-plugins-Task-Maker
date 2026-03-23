@@ -145,7 +145,7 @@ export class TagManagerService {
 		text = text.replace(regex, '');
 		// Remove trigger tags
 		for (const tag of triggerTags) {
-			text = text.replace(new RegExp(`#${this.escapeRegex(tag)}\\b`, 'g'), '');
+			text = text.replace(new RegExp(`#${this.escapeRegex(tag)}(?=[\\s#]|$)`, 'g'), '');
 		}
 		return text.replace(/\s{2,}/g, ' ').trim();
 	}

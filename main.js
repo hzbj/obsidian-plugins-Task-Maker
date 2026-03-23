@@ -247,7 +247,7 @@ var TagManagerService = class {
     const regex = this.buildQuadrantRegex();
     text = text.replace(regex, "");
     for (const tag of triggerTags) {
-      text = text.replace(new RegExp(`#${this.escapeRegex(tag)}\\b`, "g"), "");
+      text = text.replace(new RegExp(`#${this.escapeRegex(tag)}(?=[\\s#]|$)`, "g"), "");
     }
     return text.replace(/\s{2,}/g, " ").trim();
   }
@@ -348,7 +348,7 @@ var TaskScannerService = class {
   /** Check if a task line's content contains any trigger tag */
   hasInlineTriggerTag(content, triggerTags) {
     for (const tag of triggerTags) {
-      const regex = new RegExp(`#${escapeRegex(tag)}\\b`, "i");
+      const regex = new RegExp(`#${escapeRegex(tag)}(?=[\\s#]|$)`, "i");
       if (regex.test(content))
         return true;
     }

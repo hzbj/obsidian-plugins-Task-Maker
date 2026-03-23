@@ -118,7 +118,7 @@ export class TaskScannerService {
 	/** Check if a task line's content contains any trigger tag */
 	private hasInlineTriggerTag(content: string, triggerTags: string[]): boolean {
 		for (const tag of triggerTags) {
-			const regex = new RegExp(`#${escapeRegex(tag)}\\b`, 'i');
+			const regex = new RegExp(`#${escapeRegex(tag)}(?=[\\s#]|$)`, 'i');
 			if (regex.test(content)) return true;
 		}
 		return false;

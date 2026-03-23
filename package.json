@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-task-maker",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Eisenhower Matrix task management plugin for Obsidian",
 	"main": "main.js",
 	"scripts": {
