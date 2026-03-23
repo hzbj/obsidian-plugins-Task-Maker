@@ -15,10 +15,9 @@ export class TimeBreadcrumb {
 
 	render(currentViewId: string): void {
 		this.el.empty();
-		const breadcrumb = this.timeTree.getBreadcrumb(currentViewId);
 		const currentNode = this.timeTree.getNode(currentViewId);
 
-		// Navigation arrows for siblings
+		// Navigation arrows for siblings (all weeks)
 		if (currentNode) {
 			const siblings = this.timeTree.getSiblings(currentViewId);
 			const currentIdx = siblings.findIndex(s => s.viewId === currentViewId);
@@ -33,25 +32,11 @@ export class TimeBreadcrumb {
 				});
 			}
 
-			// Breadcrumb items
-			for (let i = 0; i < breadcrumb.length; i++) {
-				const node = breadcrumb[i];
-				if (i > 0) {
-					this.el.createSpan({ cls: 'tm-breadcrumb-sep', text: ' > ' });
-				}
-				const item = this.el.createSpan({
-					cls: 'tm-breadcrumb-item',
-					text: node.label,
-				});
-				if (node.viewId !== currentViewId) {
-					item.classList.add('tm-breadcrumb-link');
-					item.addEventListener('click', () => {
-						this.navigateTo(node);
-					});
-				} else {
-					item.classList.add('tm-breadcrumb-current');
-				}
-			}
+			// Current week label
+			this.el.createSpan({
+				cls: 'tm-breadcrumb-item tm-breadcrumb-current',
+				text: currentNode.label,
+			});
 
 			// Right arrow
 			const rightBtn = this.el.createEl('button', { cls: 'tm-breadcrumb-arrow' });
@@ -60,20 +45,6 @@ export class TimeBreadcrumb {
 			if (currentIdx < siblings.length - 1) {
 				rightBtn.addEventListener('click', () => {
 					this.navigateTo(siblings[currentIdx + 1]);
-				});
-			}
-		}
-
-		// Children navigation - show clickable children
-		if (currentNode && currentNode.children.length > 0) {
-			const childrenBar = this.el.createDiv({ cls: 'tm-breadcrumb-children' });
-			for (const child of currentNode.children) {
-				const childBtn = childrenBar.createEl('button', {
-					cls: 'tm-breadcrumb-child',
-					text: child.label,
-				});
-				childBtn.addEventListener('click', () => {
-					this.navigateTo(child);
 				});
 			}
 		}

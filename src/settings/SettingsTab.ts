@@ -1,7 +1,8 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
-import { PluginSettings, PhaseDefinition, TimeNodeType } from '../models/types';
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { PluginSettings, PhaseDefinition, CategoryPreset } from '../models/types';
 import { ViewRegistryService } from '../services/ViewRegistryService';
 import { EventBus } from '../services/EventBus';
+import { CreatePhaseModal } from '../ui/components/CreatePhaseModal';
 import type TaskMakerPlugin from '../main';
 
 export class SettingsTab extends PluginSettingTab {
@@ -48,7 +49,26 @@ export class SettingsTab extends PluginSettingTab {
 
 		// ─── Phase Management ───
 		containerEl.createEl('h2', { text: '阶段管理' });
+
+		new Setting(containerEl)
+			.setName('一键创建阶段笔记')
+			.setDesc('创建带有正确 frontmatter 的阶段规划笔记')
+			.addButton(btn => btn
+				.setButtonText('新建阶段笔记')
+				.setCta()
+				.onClick(() => {
+					new CreatePhaseModal(this.app, async (id, label) => {
+						await this.plugin.createPhaseNote(id, label);
+						this.display();
+					}).open();
+				})
+			);
+
 		this.renderPhaseList(containerEl, settings);
+
+		// ─── Category Management ───
+		containerEl.createEl('h2', { text: '分类管理' });
+		this.renderCategoryList(containerEl, settings);
 
 		// ─── Time View ───
 		containerEl.createEl('h2', { text: '时间视图设置' });
@@ -90,20 +110,6 @@ export class SettingsTab extends PluginSettingTab {
 				})
 			);
 
-		new Setting(containerEl)
-			.setName('默认时间层级')
-			.addDropdown(dropdown => dropdown
-				.addOption('year', '年')
-				.addOption('quarter', '季度')
-				.addOption('month', '月')
-				.addOption('week', '周')
-				.setValue(settings.timeView.defaultLevel)
-				.onChange(async (value) => {
-					settings.timeView.defaultLevel = value as TimeNodeType;
-					await this.plugin.saveSettings();
-				})
-			);
-
 		// ─── Note Association ───
 		containerEl.createEl('h2', { text: '笔记关联' });
 		new Setting(containerEl)
@@ -117,26 +123,18 @@ export class SettingsTab extends PluginSettingTab {
 			);
 
 		const patterns = settings.noteAssociation.timeNotePatterns;
-		const patternLabels: Record<TimeNodeType, string> = {
-			year: '年度笔记格式',
-			quarter: '季度笔记格式',
-			month: '月度笔记格式',
-			week: '周报笔记格式',
-		};
 
-		for (const type of ['year', 'quarter', 'month', 'week'] as TimeNodeType[]) {
-			new Setting(containerEl)
-				.setName(patternLabels[type])
-				.setDesc(`Moment.js 日期格式，用于匹配文件名`)
-				.addText(text => text
-					.setValue(patterns[type])
-					.setPlaceholder(patterns[type])
-					.onChange(async (value) => {
-						patterns[type] = value;
-						await this.plugin.saveSettings();
-					})
-				);
-		}
+		new Setting(containerEl)
+			.setName('周报笔记格式')
+			.setDesc('Moment.js 日期格式。推荐 GGGG[W]WW（ISO 周年+周数），如 2026W11')
+			.addText(text => text
+				.setValue(patterns.week)
+				.setPlaceholder('GGGG[W]WW')
+				.onChange(async (value) => {
+					patterns.week = value;
+					await this.plugin.saveSettings();
+				})
+			);
 
 		new Setting(containerEl)
 			.setName('搜索文件夹')
@@ -213,15 +211,29 @@ export class SettingsTab extends PluginSettingTab {
 			const phaseEl = listEl.createDiv({ cls: 'tm-settings-phase-item' });
 
 			new Setting(phaseEl)
-				.setName(phase.label)
-				.setDesc(`ID: ${phase.id}`)
+				.setName(phase.label + (phase.autoDetected ? ' (auto)' : ''))
+				.setDesc(`ID: ${phase.id}` + (phase.noteFilePath ? ` | ${phase.noteFilePath}` : ''))
 				.addButton(btn => btn
 					.setButtonText('删除')
 					.setWarning()
 					.onClick(async () => {
+						if (phase.autoDetected) {
+							new Notice('自动检测的阶段会在下次扫描时重新出现，除非移除笔记中的 phase frontmatter。');
+						}
 						settings.phases = settings.phases.filter(p => p.id !== phase.id);
 						await this.plugin.saveSettings();
 						this.display();
+					})
+				);
+
+			new Setting(phaseEl)
+				.setName('描述')
+				.addTextArea(text => text
+					.setPlaceholder('阶段描述（可选）')
+					.setValue(phase.description ?? '')
+					.onChange(async (value) => {
+						phase.description = value || undefined;
+						await this.plugin.saveSettings();
 					})
 				);
 		}
@@ -230,6 +242,7 @@ export class SettingsTab extends PluginSettingTab {
 		const addEl = containerEl.createDiv({ cls: 'tm-settings-add-phase' });
 		let newId = '';
 		let newLabel = '';
+		let newDesc = '';
 
 		new Setting(addEl)
 			.setName('添加新阶段')
@@ -248,8 +261,6 @@ export class SettingsTab extends PluginSettingTab {
 					if (!newId || !newLabel) return;
 					const validation = this.viewRegistry.isValidPhaseId(newId);
 					if (!validation.valid) {
-						// Show notice
-						const { Notice } = await import('obsidian');
 						new Notice(`无效的阶段ID: ${validation.reason}`);
 						return;
 					}
@@ -257,7 +268,101 @@ export class SettingsTab extends PluginSettingTab {
 						id: newId,
 						label: newLabel,
 						order: settings.phases.length,
+						description: newDesc || undefined,
 					});
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		new Setting(addEl)
+			.setName('阶段描述')
+			.addTextArea(text => text
+				.setPlaceholder('阶段描述（可选）')
+				.onChange(value => { newDesc = value; })
+			);
+	}
+
+	private renderCategoryList(containerEl: HTMLElement, settings: PluginSettings): void {
+		const listEl = containerEl.createDiv({ cls: 'tm-settings-category-list' });
+
+		for (const cat of settings.categories) {
+			const catEl = listEl.createDiv({ cls: 'tm-settings-category-item' });
+
+			const setting = new Setting(catEl);
+			// Color dot + name
+			const nameFragment = createFragment(frag => {
+				const dot = frag.createSpan({ cls: 'tm-color-dot' });
+				dot.style.backgroundColor = cat.color;
+				frag.appendText(cat.name);
+			});
+			setting.nameEl.empty();
+			setting.nameEl.appendChild(nameFragment);
+			setting.setDesc(`ID: ${cat.id}`);
+
+			setting.addColorPicker(picker => picker
+				.setValue(cat.color)
+				.onChange(async (value) => {
+					cat.color = value;
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+			setting.addButton(btn => btn
+				.setButtonText('删除')
+				.setWarning()
+				.onClick(async () => {
+					settings.categories = settings.categories.filter(c => c.id !== cat.id);
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+		}
+
+		// Add new category
+		const addEl = containerEl.createDiv({ cls: 'tm-settings-add-category' });
+		let newCatId = '';
+		let newCatName = '';
+		let newCatColor = '#4a9eff';
+
+		new Setting(addEl)
+			.setName('添加新分类')
+			.addText(text => text
+				.setPlaceholder('分类ID (如 work)')
+				.onChange(value => { newCatId = value; })
+			)
+			.addText(text => text
+				.setPlaceholder('显示名称 (如 工作)')
+				.onChange(value => { newCatName = value; })
+			)
+			.addColorPicker(picker => picker
+				.setValue(newCatColor)
+				.onChange(value => { newCatColor = value; })
+			)
+			.addButton(btn => btn
+				.setButtonText('添加')
+				.setCta()
+				.onClick(async () => {
+					const id = newCatId.trim();
+					const name = newCatName.trim();
+					if (!id || !name) {
+						new Notice('分类ID和名称不能为空');
+						return;
+					}
+					if (!/^[a-zA-Z0-9_]+$/.test(id)) {
+						new Notice('分类ID只能包含字母、数字和下划线');
+						return;
+					}
+					if (settings.categories.some(c => c.id === id)) {
+						new Notice(`分类ID "${id}" 已存在`);
+						return;
+					}
+					if (/[\s#]/.test(name)) {
+						new Notice('分类名称不能包含空格或 # 号');
+						return;
+					}
+					settings.categories.push({ id, name, color: newCatColor });
 					await this.plugin.saveSettings();
 					this.display();
 				})

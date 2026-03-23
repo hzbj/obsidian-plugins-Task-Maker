@@ -4,7 +4,7 @@ import { TFile } from 'obsidian';
 
 export type QuadrantCode = 'ui' | 'in' | 'un' | 'nn';
 
-export type TimeNodeType = 'year' | 'quarter' | 'month' | 'week';
+export type TimeNodeType = 'week';
 
 export type ViewType = 'phase' | TimeNodeType;
 
@@ -27,6 +27,8 @@ export interface Task {
 	triggerType: 'frontmatter' | 'inline';
 	/** viewId -> QuadrantCode mapping, parsed from inline tags */
 	quadrantAssignments: Record<string, QuadrantCode>;
+	/** Category name parsed from inline tag, null = uncategorized */
+	category: string | null;
 }
 
 // ============ Views ============
@@ -46,6 +48,8 @@ export interface PhaseDefinition {
 	order: number;
 	timePeriod?: { start: string; end: string };
 	noteFilePath?: string;
+	description?: string;
+	autoDetected?: boolean;
 }
 
 export interface TimeNode {
@@ -65,11 +69,11 @@ export interface PluginSettings {
 	triggerTags: string[];
 	tagNamespace: string;
 	phases: PhaseDefinition[];
+	categories: CategoryPreset[];
 	timeView: {
 		startYear: number;
 		endYear: number;
 		weekStart: 0 | 1;
-		defaultLevel: TimeNodeType;
 	};
 	noteAssociation: {
 		enabled: boolean;
@@ -89,11 +93,30 @@ export interface PluginSettings {
 
 export interface EventMap {
 	'scan-complete': { tasks: Task[] };
+	'scan-progress': { scanned: number; total: number };
 	'tasks-changed': { filePath: string; tasks: Task[] };
 	'task-updated': { taskId: string; viewId: string; quadrant: QuadrantCode | null };
 	'task-toggled': { taskId: string; completed: boolean };
 	'view-switched': { viewId: string; viewType: ViewType };
 	'settings-changed': { settings: PluginSettings };
+	'phases-synced': { added: string[]; updated: string[]; removed: string[] };
+	'task-category-changed': { taskId: string; category: string | null };
+}
+
+// ============ Category Preset ============
+
+export interface CategoryPreset {
+	id: string;
+	name: string;
+	color: string;
+}
+
+// ============ Phase Detection ============
+
+export interface DetectedPhaseInfo {
+	phaseId: string;
+	phaseLabel: string;
+	filePath: string;
 }
 
 // ============ Associated Note ============

@@ -1,11 +1,12 @@
-import { App, TFile, CachedMetadata } from 'obsidian';
-import { Task, QuadrantCode, PluginSettings } from '../models/types';
+import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
+import { Task, QuadrantCode, PluginSettings, DetectedPhaseInfo } from '../models/types';
 import { CHECKBOX_REGEX } from '../models/constants';
 import { TagManagerService } from './TagManagerService';
 import { EventBus } from './EventBus';
 
 export class TaskScannerService {
 	private taskCache: Map<string, Task[]> = new Map(); // filePath -> tasks
+	private detectedPhases: Map<string, DetectedPhaseInfo> = new Map(); // filePath -> phase info
 
 	constructor(
 		private app: App,
@@ -21,16 +22,29 @@ export class TaskScannerService {
 		return all;
 	}
 
+	/** Get all detected phase notes from last scan */
+	getDetectedPhases(): DetectedPhaseInfo[] {
+		return Array.from(this.detectedPhases.values());
+	}
+
 	/** Full scan of the entire vault */
 	async fullScan(): Promise<void> {
 		this.taskCache.clear();
+		this.detectedPhases.clear();
 		const files = this.app.vault.getMarkdownFiles();
+		const total = files.length;
+
+		this.eventBus.emit('scan-progress', { scanned: 0, total });
 
 		// Process in batches to avoid blocking UI
 		const batchSize = 50;
 		for (let i = 0; i < files.length; i += batchSize) {
 			const batch = files.slice(i, i + batchSize);
 			await Promise.all(batch.map(f => this.scanFile(f)));
+
+			const scanned = Math.min(i + batchSize, total);
+			this.eventBus.emit('scan-progress', { scanned, total });
+
 			// Yield to UI between batches
 			if (i + batchSize < files.length) {
 				await sleep(0);
@@ -40,14 +54,24 @@ export class TaskScannerService {
 		this.eventBus.emit('scan-complete', { tasks: this.getAllTasks() });
 	}
 
-	/** Scan a single file and update cache */
-	async scanFile(file: TFile): Promise<Task[]> {
+	/** Scan a single file and update cache. forceExtract=true skips trigger check. */
+	async scanFile(file: TFile, forceExtract = false): Promise<Task[]> {
 		const settings = this.getSettings();
 		const content = await this.app.vault.cachedRead(file);
 		const cache = this.app.metadataCache.getFileCache(file);
 
 		const hasFrontmatterTrigger = this.checkFrontmatterTrigger(cache, settings.triggerTags);
-		const lines = content.split('\n');
+
+		// Phase note detection: check for 'phase' property/tag in frontmatter
+		this.detectPhaseFromFrontmatter(file, cache);
+
+		// Force-extract tasks from phase notes (detected via frontmatter or registered in settings)
+		const isPhaseNote = this.detectedPhases.has(file.path)
+			|| settings.phases.some(p => p.noteFilePath === file.path);
+		const shouldForce = forceExtract || isPhaseNote;
+
+		// Normalize line endings: strip \r so Windows \r\n won't pollute line content
+		const lines = content.split('\n').map(l => l.replace(/\r$/, ''));
 		const tasks: Task[] = [];
 
 		for (let i = 0; i < lines.length; i++) {
@@ -58,14 +82,15 @@ export class TaskScannerService {
 			const completed = match[2].toLowerCase() === 'x';
 			const taskContent = match[4];
 
-			// Check trigger condition
+			// Check trigger condition (bypass when forced)
 			const hasInlineTrigger = this.hasInlineTriggerTag(taskContent, settings.triggerTags);
 
-			if (!hasFrontmatterTrigger && !hasInlineTrigger) {
+			if (!shouldForce && !hasFrontmatterTrigger && !hasInlineTrigger) {
 				continue; // Skip: no trigger
 			}
 
 			const quadrantAssignments = this.tagManager.parseQuadrantTags(line);
+			const category = this.tagManager.parseCategoryTag(line);
 			const text = this.tagManager.cleanDisplayText(line, settings.triggerTags);
 
 			tasks.push({
@@ -75,8 +100,9 @@ export class TaskScannerService {
 				filePath: file.path,
 				lineNumber: i,
 				completed,
-				triggerType: hasFrontmatterTrigger ? 'frontmatter' : 'inline',
+				triggerType: shouldForce ? 'frontmatter' : (hasFrontmatterTrigger ? 'frontmatter' : 'inline'),
 				quadrantAssignments,
+				category,
 			});
 		}
 
@@ -92,45 +118,131 @@ export class TaskScannerService {
 
 	/** Check if file's frontmatter tags contain any trigger tag */
 	private checkFrontmatterTrigger(cache: CachedMetadata | null, triggerTags: string[]): boolean {
-		if (!cache?.frontmatter) return false;
+		if (!cache) return false;
 
-		const fmTags: string[] = [];
+		// Use Obsidian's getAllTags which reliably extracts frontmatter + body tags
+		// Returns tags prefixed with #, e.g. ['#task', '#代办']
+		const allTags = getAllTags(cache);
+		if (!allTags || allTags.length === 0) return false;
 
-		// Obsidian stores tags in frontmatter.tags (array or string)
-		const rawTags = cache.frontmatter.tags;
-		if (Array.isArray(rawTags)) {
-			fmTags.push(...rawTags.map((t: string) => t.replace(/^#/, '').toLowerCase()));
-		} else if (typeof rawTags === 'string') {
-			fmTags.push(rawTags.replace(/^#/, '').toLowerCase());
-		}
+		// We only want frontmatter tags for the "whole file" trigger.
+		// getAllTags includes body tags too, but frontmatter tags are what we need.
+		// Obsidian's cache.frontmatter stores raw YAML, so extract from there first.
+		const fmTags = this.extractFrontmatterTags(cache);
 
-		// Also check frontmatter.tag (singular)
-		const rawTag = cache.frontmatter.tag;
-		if (Array.isArray(rawTag)) {
-			fmTags.push(...rawTag.map((t: string) => t.replace(/^#/, '').toLowerCase()));
-		} else if (typeof rawTag === 'string') {
-			fmTags.push(rawTag.replace(/^#/, '').toLowerCase());
-		}
-
-		return triggerTags.some(trigger => fmTags.includes(trigger.toLowerCase()));
+		return triggerTags.some(trigger =>
+			fmTags.some(ft => ft.toLowerCase() === trigger.toLowerCase())
+		);
 	}
 
-	/** Check if a task line's content contains any trigger tag */
+	/** Extract tag strings from frontmatter, stripping # prefix, handling all formats */
+	private extractFrontmatterTags(cache: CachedMetadata): string[] {
+		const tags: string[] = [];
+		if (!cache.frontmatter) return tags;
+
+		// Obsidian stores frontmatter tags in multiple possible locations
+		const sources = [
+			cache.frontmatter.tags,
+			cache.frontmatter.tag,
+		];
+
+		for (const raw of sources) {
+			if (Array.isArray(raw)) {
+				for (const t of raw) {
+					if (typeof t === 'string') {
+						tags.push(t.replace(/^#/, ''));
+					}
+				}
+			} else if (typeof raw === 'string') {
+				// Could be comma-separated: "task, 代办"
+				const parts = raw.split(',');
+				for (const p of parts) {
+					const trimmed = p.trim().replace(/^#/, '');
+					if (trimmed) tags.push(trimmed);
+				}
+			}
+		}
+
+		// Also try getAllTags as a fallback — filter to frontmatter-only tags
+		// by checking if the tag position is within frontmatter range
+		if (tags.length === 0 && cache.frontmatter) {
+			const allTags = getAllTags(cache);
+			if (allTags) {
+				tags.push(...allTags.map(t => t.replace(/^#/, '')));
+			}
+		}
+
+		return tags;
+	}
+
+	/** Check if a task line's content contains any trigger tag (Unicode-safe) */
 	private hasInlineTriggerTag(content: string, triggerTags: string[]): boolean {
 		for (const tag of triggerTags) {
-			const regex = new RegExp(`#${escapeRegex(tag)}(?=[\\s#]|$)`, 'i');
-			if (regex.test(content)) return true;
+			const hashTag = '#' + tag;
+			let searchFrom = 0;
+			while (true) {
+				const idx = content.indexOf(hashTag, searchFrom);
+				if (idx === -1) break;
+
+				const endPos = idx + hashTag.length;
+				// Check: character BEFORE # must be whitespace or start-of-string
+				if (idx > 0) {
+					const prevChar = content[idx - 1];
+					if (prevChar !== ' ' && prevChar !== '\t') {
+						searchFrom = endPos;
+						continue;
+					}
+				}
+				// Check: character AFTER tag must be whitespace, #, or end-of-string
+				if (endPos >= content.length) return true;
+				const nextChar = content[endPos];
+				if (nextChar === ' ' || nextChar === '\t' || nextChar === '#' || nextChar === '\n') {
+					return true;
+				}
+				searchFrom = endPos;
+			}
 		}
 		return false;
 	}
 
 	clearCache(): void {
 		this.taskCache.clear();
+		this.detectedPhases.clear();
 	}
-}
 
-function escapeRegex(str: string): string {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	/** Detect phase definition from frontmatter properties or tags */
+	private detectPhaseFromFrontmatter(file: TFile, cache: CachedMetadata | null): void {
+		if (!cache?.frontmatter) {
+			this.detectedPhases.delete(file.path);
+			return;
+		}
+
+		// Check both: direct 'phase' property (phase: true) and 'phase' in tags array
+		const hasPhaseProperty = cache.frontmatter['phase'] === true
+			|| cache.frontmatter['phase'] === 'true';
+		const fmTags = this.extractFrontmatterTags(cache);
+		const hasPhaseTag = fmTags.some(t => t.toLowerCase() === 'phase');
+
+		if (!hasPhaseProperty && !hasPhaseTag) {
+			this.detectedPhases.delete(file.path);
+			return;
+		}
+
+		const phaseId = cache.frontmatter['phase-id'];
+		const phaseLabel = cache.frontmatter['phase-label'];
+
+		if (typeof phaseId === 'string' && phaseId.trim()) {
+			this.detectedPhases.set(file.path, {
+				phaseId: phaseId.trim(),
+				phaseLabel: typeof phaseLabel === 'string' && phaseLabel.trim()
+					? phaseLabel.trim()
+					: phaseId.trim(),
+				filePath: file.path,
+			});
+		} else {
+			this.detectedPhases.delete(file.path);
+		}
+	}
 }
 
 function sleep(ms: number): Promise<void> {

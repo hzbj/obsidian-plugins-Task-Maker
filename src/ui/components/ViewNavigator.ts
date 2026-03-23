@@ -15,41 +15,57 @@ export class ViewNavigator {
 	private phaseSelector: PhaseSelector;
 	private timeBreadcrumb: TimeBreadcrumb;
 	private todayBtn: HTMLElement;
+	private scanHostEl: HTMLElement;
 
 	private currentMode: ViewMode = 'time';
-	private currentTimeLevel: TimeNodeType = 'month';
+	private currentTimeLevel: TimeNodeType = 'week';
 
 	constructor(
 		private container: HTMLElement,
 		private viewRegistry: ViewRegistryService,
 		private timeTree: TimeTreeService,
-		private eventBus: EventBus
+		private eventBus: EventBus,
+		private onAddPhase?: () => void
 	) {
 		this.el = container.createDiv({ cls: 'tm-nav-bar' });
 
 		// Mode tabs
 		this.modeTabsEl = this.el.createDiv({ cls: 'tm-mode-tabs' });
-		this.createModeTab('time', '时间视图');
+		this.createModeTab('time', '周视图');
 		this.createModeTab('phase', '阶段视图');
 
 		// Time view controls
 		this.timeControlsEl = this.el.createDiv({ cls: 'tm-time-controls' });
 		this.timeBreadcrumb = new TimeBreadcrumb(this.timeControlsEl, timeTree, eventBus);
 
-		// "Jump to today" button
-		this.todayBtn = this.timeControlsEl.createEl('button', {
+		// Row container for "today" button + scan controls
+		const timeActionsEl = this.timeControlsEl.createDiv({ cls: 'tm-time-actions' });
+
+		// "Jump to this week" button
+		this.todayBtn = timeActionsEl.createEl('button', {
 			cls: 'tm-today-btn',
-			text: '今天',
+			text: '本周',
 		});
 		this.todayBtn.addEventListener('click', () => {
-			const level = this.currentTimeLevel;
-			const viewId = this.timeTree.getCurrentViewId(level);
-			this.eventBus.emit('view-switched', { viewId, viewType: level });
+			const viewId = this.timeTree.getCurrentViewId('week');
+			this.eventBus.emit('view-switched', { viewId, viewType: 'week' });
 		});
+
+		// Scan host container (populated by MatrixView)
+		this.scanHostEl = timeActionsEl.createDiv({ cls: 'tm-scan-host' });
 
 		// Phase view controls
 		this.phaseControlsEl = this.el.createDiv({ cls: 'tm-phase-controls' });
 		this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus);
+
+		if (this.onAddPhase) {
+			const addBtn = this.phaseControlsEl.createEl('button', {
+				cls: 'tm-add-phase-btn',
+				text: '+',
+				attr: { 'aria-label': '新建阶段笔记' },
+			});
+			addBtn.addEventListener('click', () => this.onAddPhase!());
+		}
 
 		this.setMode('time');
 	}
@@ -63,8 +79,8 @@ export class ViewNavigator {
 		tab.addEventListener('click', () => {
 			this.setMode(mode);
 			if (mode === 'time') {
-				const viewId = this.timeTree.getCurrentViewId('month');
-				this.eventBus.emit('view-switched', { viewId, viewType: 'month' });
+				const viewId = this.timeTree.getCurrentViewId('week');
+				this.eventBus.emit('view-switched', { viewId, viewType: 'week' });
 			} else {
 				const phases = this.viewRegistry.getPhaseViews();
 				if (phases.length > 0) {
@@ -108,5 +124,9 @@ export class ViewNavigator {
 
 	getMode(): ViewMode {
 		return this.currentMode;
+	}
+
+	getScanHost(): HTMLElement {
+		return this.scanHostEl;
 	}
 }

@@ -22,6 +22,73 @@
 	gap: 4px;
 }
 
+/* ============ Scan Host (inside time-actions) ============ */
+.tm-scan-host {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+
+.tm-refresh-btn {
+	padding: 4px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 12px;
+	white-space: nowrap;
+	flex-shrink: 0;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tm-refresh-btn:hover:not(:disabled) {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.tm-refresh-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.tm-progress-wrap {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+
+.tm-progress-bar {
+	flex: 1;
+	height: 6px;
+	background: var(--background-modifier-border);
+	border-radius: 3px;
+	overflow: hidden;
+	min-width: 60px;
+}
+
+.tm-progress-fill {
+	height: 100%;
+	background: var(--interactive-accent);
+	border-radius: 3px;
+	width: 0%;
+	transition: width 0.2s ease;
+}
+
+.tm-progress-text {
+	font-size: 11px;
+	color: var(--text-faint);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+/* ============ Mode Tabs ============ */
+
 .tm-mode-tab {
 	padding: 6px 16px;
 	border: 1px solid var(--background-modifier-border);
@@ -135,6 +202,14 @@
 }
 
 /* ============ Today Button ============ */
+.tm-time-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 4px;
+	flex-wrap: wrap;
+}
+
 .tm-today-btn {
 	padding: 4px 12px;
 	border: 1px solid var(--interactive-accent);
@@ -143,8 +218,7 @@
 	color: var(--interactive-accent);
 	cursor: pointer;
 	font-size: 12px;
-	align-self: flex-start;
-	margin-top: 4px;
+	flex-shrink: 0;
 }
 
 .tm-today-btn:hover {
@@ -156,21 +230,60 @@
 .tm-phase-selector {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 4px;
+	flex-wrap: wrap;
 }
 
-.tm-phase-label {
-	font-size: 13px;
-	color: var(--text-muted);
-}
-
-.tm-phase-select {
-	padding: 4px 8px;
+.tm-phase-btn {
+	padding: 6px 16px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
+	border-radius: 6px;
 	background: var(--background-secondary);
-	color: var(--text-normal);
+	color: var(--text-muted);
+	cursor: pointer;
 	font-size: 13px;
+	white-space: nowrap;
+	transition: all 0.15s ease;
+}
+
+.tm-phase-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
+.tm-phase-btn-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.tm-phase-empty {
+	font-size: 12px;
+	color: var(--text-faint);
+	padding: 4px 8px;
+}
+
+.tm-add-phase-btn {
+	width: 28px;
+	height: 28px;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tm-add-phase-btn:hover {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+	border-style: solid;
 }
 
 /* ============ Context Panel ============ */
@@ -249,6 +362,179 @@
 	background: var(--tm-quadrant-color, var(--interactive-accent));
 	border-radius: 2px;
 	transition: width 0.3s ease;
+}
+
+/* ---- Phase Cards (inside Context Panel) ---- */
+.tm-context-phases {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px 10px;
+}
+
+.tm-context-phase-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	padding: 10px 12px;
+	transition: box-shadow 0.15s ease;
+}
+
+.tm-context-phase-card:hover {
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tm-context-phase-name {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-accent);
+	cursor: pointer;
+	margin-bottom: 2px;
+}
+
+.tm-context-phase-name:hover {
+	text-decoration: underline;
+}
+
+.tm-context-phase-description {
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.4;
+	margin-bottom: 6px;
+}
+
+.tm-context-phase-progress {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.tm-context-phase-progress .tm-context-bar {
+	flex: 1;
+}
+
+.tm-context-phase-count {
+	font-size: 12px;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+/* Compact quadrant cells inside phase cards */
+.tm-context-phase-card .tm-context-summary {
+	border-radius: 4px;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.tm-context-phase-card .tm-context-cell {
+	padding: 4px 8px;
+}
+
+.tm-context-phase-card .tm-context-count {
+	font-size: 12px;
+}
+
+/* ---- Phase Detail Toggle ---- */
+.tm-context-phase-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 10px;
+	margin-top: 6px;
+	font-size: 11px;
+	color: var(--text-muted);
+	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-secondary);
+	transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.tm-context-phase-toggle:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.tm-context-phase-toggle .tm-toggle-icon {
+	display: flex;
+	width: 12px;
+	height: 12px;
+}
+
+.tm-context-phase-toggle .tm-toggle-icon svg {
+	width: 12px;
+	height: 12px;
+}
+
+/* ---- Expanded Phase Task Details ---- */
+.tm-context-phase-details {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.tm-context-detail-group {
+	margin-bottom: 8px;
+}
+
+.tm-context-detail-group:last-child {
+	margin-bottom: 0;
+}
+
+.tm-context-detail-header {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--tm-quadrant-color, var(--text-muted));
+	padding-left: 8px;
+	margin-bottom: 4px;
+	border-left: 2px solid var(--tm-quadrant-color, var(--text-faint));
+}
+
+.tm-context-detail-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	padding: 3px 4px;
+	border-radius: 3px;
+	font-size: 12px;
+	transition: background 0.1s ease;
+}
+
+.tm-context-detail-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.tm-context-detail-checkbox {
+	margin-top: 2px;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.tm-context-detail-text {
+	flex: 1;
+	min-width: 0;
+	color: var(--text-normal);
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.tm-context-detail-completed .tm-context-detail-text {
+	text-decoration: line-through;
+	color: var(--text-faint);
+}
+
+.tm-context-detail-source {
+	font-size: 10px;
+	color: var(--text-faint);
+	cursor: pointer;
+	flex-shrink: 0;
+	margin-top: 2px;
+}
+
+.tm-context-detail-source:hover {
+	color: var(--text-accent);
 }
 
 /* ============ Quadrant Grid ============ */
@@ -367,6 +653,24 @@
 	background: var(--background-modifier-hover);
 }
 
+/* ============ Task Category ============ */
+.tm-task-categorized {
+	border-left: 3px solid var(--tm-category-color, #888);
+}
+
+.tm-task-category-badge {
+	display: inline-block;
+	font-size: 10px;
+	padding: 1px 6px;
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--tm-category-color, #888) 15%, var(--background-primary));
+	color: var(--tm-category-color, #888);
+	white-space: nowrap;
+	flex-shrink: 0;
+	margin-left: 4px;
+	vertical-align: middle;
+}
+
 /* ============ Drag & Drop Visual Feedback ============ */
 .tm-quadrant.tm-drag-over {
 	border-color: var(--interactive-accent);
@@ -467,6 +771,29 @@
 	margin-top: 8px;
 	padding-top: 8px;
 	border-top: 1px solid var(--background-modifier-border);
+}
+
+.tm-settings-category-list {
+	margin-bottom: 12px;
+}
+
+.tm-settings-category-item {
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tm-settings-add-category {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.tm-color-dot {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	margin-right: 6px;
+	vertical-align: middle;
 }
 
 /* ============ Compact Mode ============ */
