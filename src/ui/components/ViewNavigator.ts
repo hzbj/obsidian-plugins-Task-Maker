@@ -16,16 +16,19 @@ export class ViewNavigator {
 	private timeBreadcrumb: TimeBreadcrumb;
 	private todayBtn: HTMLElement;
 	private scanHostEl: HTMLElement;
+	private filterBtn: HTMLElement;
 
 	private currentMode: ViewMode = 'time';
 	private currentTimeLevel: TimeNodeType = 'week';
+	private hideCompleted: boolean = false;
 
 	constructor(
 		private container: HTMLElement,
 		private viewRegistry: ViewRegistryService,
 		private timeTree: TimeTreeService,
 		private eventBus: EventBus,
-		private onAddPhase?: () => void
+		private onAddPhase?: () => void,
+		private onToggleFilter?: () => void
 	) {
 		this.el = container.createDiv({ cls: 'tm-nav-bar' });
 
@@ -33,6 +36,18 @@ export class ViewNavigator {
 		this.modeTabsEl = this.el.createDiv({ cls: 'tm-mode-tabs' });
 		this.createModeTab('time', '周视图');
 		this.createModeTab('phase', '阶段视图');
+
+		// Filter toggle button (right-aligned in mode tabs row)
+		this.filterBtn = this.modeTabsEl.createEl('button', {
+			cls: 'tm-filter-toggle-btn',
+			text: '隐藏已完成',
+		});
+		this.filterBtn.addEventListener('click', () => {
+			this.hideCompleted = !this.hideCompleted;
+			this.filterBtn.classList.toggle('tm-filter-active', this.hideCompleted);
+			this.filterBtn.textContent = this.hideCompleted ? '显示全部' : '隐藏已完成';
+			this.onToggleFilter?.();
+		});
 
 		// Time view controls
 		this.timeControlsEl = this.el.createDiv({ cls: 'tm-time-controls' });
@@ -62,7 +77,7 @@ export class ViewNavigator {
 			const addBtn = this.phaseControlsEl.createEl('button', {
 				cls: 'tm-add-phase-btn',
 				text: '+',
-				attr: { 'aria-label': '新建阶段笔记' },
+				attr: { 'aria-label': '添加阶段属性到当前笔记' },
 			});
 			addBtn.addEventListener('click', () => this.onAddPhase!());
 		}
@@ -128,5 +143,9 @@ export class ViewNavigator {
 
 	getScanHost(): HTMLElement {
 		return this.scanHostEl;
+	}
+
+	isHideCompleted(): boolean {
+		return this.hideCompleted;
 	}
 }

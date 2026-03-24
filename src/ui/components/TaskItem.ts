@@ -4,6 +4,13 @@ import { TagManagerService } from '../../services/TagManagerService';
 import { EventBus } from '../../services/EventBus';
 import { DragDropManager } from '../DragDropManager';
 
+export interface TaskItemCollapseOptions {
+	hasChildren?: boolean;
+	isCollapsed?: boolean;
+	childCount?: number;
+	onToggleCollapse?: () => void;
+}
+
 export class TaskItem {
 	el: HTMLElement;
 
@@ -14,7 +21,8 @@ export class TaskItem {
 		private tagManager: TagManagerService,
 		private eventBus: EventBus,
 		private dragDropManager: DragDropManager,
-		private settings: PluginSettings
+		private settings: PluginSettings,
+		private collapseOptions?: TaskItemCollapseOptions
 	) {
 		this.el = container.createDiv({ cls: 'tm-task-item' });
 		if (task.completed) {
@@ -72,6 +80,18 @@ export class TaskItem {
 	}
 
 	private render(): void {
+		const opts = this.collapseOptions;
+
+		// Collapse toggle arrow (before checkbox)
+		if (opts?.hasChildren) {
+			const toggle = this.el.createSpan({ cls: 'tm-task-collapse-toggle' });
+			toggle.textContent = opts.isCollapsed ? '\u25B6' : '\u25BC';
+			toggle.addEventListener('click', (e) => {
+				e.stopPropagation();
+				opts.onToggleCollapse?.();
+			});
+		}
+
 		// Checkbox
 		const checkbox = this.el.createEl('input', {
 			type: 'checkbox',
@@ -91,6 +111,12 @@ export class TaskItem {
 		// Task text
 		const textEl = this.el.createDiv({ cls: 'tm-task-text' });
 		textEl.textContent = this.task.text;
+
+		// Child count badge (when collapsed)
+		if (opts?.isCollapsed && opts.childCount && opts.childCount > 0) {
+			const badge = this.el.createSpan({ cls: 'tm-task-child-count' });
+			badge.textContent = `${opts.childCount}个子任务`;
+		}
 
 		// Category badge
 		if (this.task.category) {

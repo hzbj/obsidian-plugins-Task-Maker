@@ -2,17 +2,22 @@ import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import { PluginSettings, PhaseDefinition, CategoryPreset } from '../models/types';
 import { ViewRegistryService } from '../services/ViewRegistryService';
 import { EventBus } from '../services/EventBus';
+import { TimeBlocksSyncService } from '../services/TimeBlocksSyncService';
 import { CreatePhaseModal } from '../ui/components/CreatePhaseModal';
 import type TaskMakerPlugin from '../main';
 
 export class SettingsTab extends PluginSettingTab {
+	private timeBlocksSync: TimeBlocksSyncService;
+
 	constructor(
 		app: App,
 		private plugin: TaskMakerPlugin,
 		private viewRegistry: ViewRegistryService,
-		private eventBus: EventBus
+		private eventBus: EventBus,
+		timeBlocksSync?: TimeBlocksSyncService
 	) {
 		super(app, plugin);
+		this.timeBlocksSync = timeBlocksSync || new TimeBlocksSyncService(app, () => plugin.settings);
 	}
 
 	display(): void {
@@ -57,7 +62,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setButtonText('新建阶段笔记')
 				.setCta()
 				.onClick(() => {
-					new CreatePhaseModal(this.app, async (id, label) => {
+					new CreatePhaseModal(this.app, [], async (id, label) => {
 						await this.plugin.createPhaseNote(id, label);
 						this.display();
 					}).open();
@@ -68,6 +73,7 @@ export class SettingsTab extends PluginSettingTab {
 
 		// ─── Category Management ───
 		containerEl.createEl('h2', { text: '分类管理' });
+		this.renderTimeBlocksSync(containerEl, settings);
 		this.renderCategoryList(containerEl, settings);
 
 		// ─── Time View ───
@@ -280,6 +286,65 @@ export class SettingsTab extends PluginSettingTab {
 			.addTextArea(text => text
 				.setPlaceholder('阶段描述（可选）')
 				.onChange(value => { newDesc = value; })
+			);
+	}
+
+	private async renderTimeBlocksSync(containerEl: HTMLElement, settings: PluginSettings): Promise<void> {
+		const isAvailable = await this.timeBlocksSync.isAvailable();
+		
+		if (!isAvailable) {
+			const descEl = containerEl.createEl('p', { 
+				text: '未检测到 time-blocks 插件数据（time-blocks-data/index.json 不存在）',
+				cls: 'tm-sync-not-available'
+			});
+			descEl.style.color = 'var(--text-muted)';
+			descEl.style.fontSize = '0.9em';
+			return;
+		}
+
+		const syncContainer = containerEl.createDiv({ cls: 'tm-timeblocks-sync' });
+		
+		new Setting(syncContainer)
+			.setName('从 Time Blocks 同步分类')
+			.setDesc('同步 time-blocks 插件中的分类设置到当前插件')
+			.addButton(btn => btn
+				.setButtonText('预览同步')
+				.onClick(async () => {
+					const result = await this.timeBlocksSync.previewSync();
+					if (result.success) {
+						const catList = result.categories.map(c => `• ${c.name} (${c.color})`).join('\n');
+						new Notice(`找到以下分类:\n${catList}`, 5000);
+					} else {
+						new Notice(result.message);
+					}
+				})
+			)
+			.addButton(btn => btn
+				.setButtonText('合并同步')
+				.setCta()
+				.onClick(async () => {
+					const result = await this.timeBlocksSync.syncCategories('merge');
+					new Notice(result.message);
+					if (result.success) {
+						await this.plugin.saveSettings();
+						this.display();
+					}
+				})
+			)
+			.addButton(btn => btn
+				.setButtonText('完全替换')
+				.setWarning()
+				.onClick(async () => {
+					if (!confirm('确定要完全替换现有分类吗？这将删除所有现有分类。')) {
+						return;
+					}
+					const result = await this.timeBlocksSync.syncCategories('replace');
+					new Notice(result.message);
+					if (result.success) {
+						await this.plugin.saveSettings();
+						this.display();
+					}
+				})
 			);
 	}
 

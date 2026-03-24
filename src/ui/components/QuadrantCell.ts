@@ -1,9 +1,10 @@
 import { App } from 'obsidian';
-import { Task, QuadrantCode, PluginSettings } from '../../models/types';
+import { Task, QuadrantCode, PluginSettings, TaskTreeNode } from '../../models/types';
 import { TagManagerService } from '../../services/TagManagerService';
 import { EventBus } from '../../services/EventBus';
 import { DragDropManager } from '../DragDropManager';
 import { TaskItem } from './TaskItem';
+import { buildTaskForest, countDescendants } from '../utils/TaskTreeBuilder';
 
 export class QuadrantCell {
 	el: HTMLElement;
@@ -37,20 +38,51 @@ export class QuadrantCell {
 		this.dragDropManager.setupDropZone(this.el, quadrant);
 	}
 
-	renderTasks(tasks: Task[]): void {
+	renderTasks(
+		tasks: Task[],
+		collapsedIds: Set<string>,
+		onToggleCollapse: (taskId: string) => void
+	): void {
 		this.taskListEl.empty();
 		this.countEl.textContent = `${tasks.length}`;
 
-		for (const task of tasks) {
-			new TaskItem(
-				this.taskListEl,
-				task,
-				this.app,
-				this.tagManager,
-				this.eventBus,
-				this.dragDropManager,
-				this.settings
-			);
+		const forest = buildTaskForest(tasks);
+		for (const node of forest) {
+			this.renderNode(this.taskListEl, node, collapsedIds, onToggleCollapse);
+		}
+	}
+
+	private renderNode(
+		container: HTMLElement,
+		node: TaskTreeNode,
+		collapsedIds: Set<string>,
+		onToggleCollapse: (taskId: string) => void
+	): void {
+		const hasChildren = node.children.length > 0;
+		const isCollapsed = hasChildren && collapsedIds.has(node.task.id);
+		const childCount = hasChildren ? countDescendants(node) : 0;
+
+		new TaskItem(
+			container,
+			node.task,
+			this.app,
+			this.tagManager,
+			this.eventBus,
+			this.dragDropManager,
+			this.settings,
+			hasChildren ? {
+				hasChildren: true,
+				isCollapsed,
+				childCount,
+				onToggleCollapse: () => onToggleCollapse(node.task.id),
+			} : undefined
+		);
+
+		if (hasChildren && !isCollapsed) {
+			const childrenContainer = container.createDiv({ cls: 'tm-task-children' });
+			for (const child of node.children) {
+				this.renderNode(childrenContainer, child, collapsedIds, onToggleCollapse);
+			}
 		}
 	}
 }

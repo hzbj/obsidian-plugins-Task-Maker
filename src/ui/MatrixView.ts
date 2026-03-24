@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, App } from 'obsidian';
+import { ItemView, WorkspaceLeaf, App, TFile, Notice } from 'obsidian';
 import { Task, ViewType, PluginSettings, QuadrantCode } from '../models/types';
 import { VIEW_TYPE_MATRIX, TIME_VIEW_ID_PATTERNS } from '../models/constants';
 import { EventBus } from '../services/EventBus';
@@ -48,7 +48,7 @@ export class MatrixView extends ItemView {
 		private viewRegistry: ViewRegistryService,
 		private noteLinker: NoteLinkerService,
 		private getSettings: () => PluginSettings,
-		private onCreatePhase?: (id: string, label: string) => Promise<void>
+		private onAddPhaseToNote?: (file: TFile, id: string, label: string) => Promise<void>
 	) {
 		super(leaf);
 
@@ -128,13 +128,29 @@ export class MatrixView extends ItemView {
 			this.viewRegistry,
 			this.timeTree,
 			this.eventBus,
-			this.onCreatePhase
+			this.onAddPhaseToNote
 				? () => {
-					new CreatePhaseModal(this.app, (id, label) => {
-						this.onCreatePhase!(id, label);
-					}).open();
+					const activeFile = this.app.workspace.getActiveFile();
+					if (!activeFile) {
+						new Notice('请先打开一个笔记');
+						return;
+					}
+					if (activeFile.extension !== 'md') {
+						new Notice('当前文件不是 Markdown 笔记');
+						return;
+					}
+					const cache = this.app.metadataCache.getFileCache(activeFile);
+					if (cache?.frontmatter?.['phase'] === true || cache?.frontmatter?.['phase'] === 'true') {
+						new Notice(`该笔记已经是阶段笔记 (${activeFile.basename})`);
+						return;
+					}
+					const capturedFile = activeFile;
+					new CreatePhaseModal(this.app, this.getSettings().phases, (id, label) => {
+						this.onAddPhaseToNote!(capturedFile, id, label);
+					}, capturedFile.basename).open();
 				}
-				: undefined
+				: undefined,
+			() => this.refresh()
 		);
 
 		// Scan button + progress (inside navigator's time controls, after "today" button)
@@ -246,6 +262,11 @@ export class MatrixView extends ItemView {
 				if (noteToPhase.get(task.filePath) === this.currentViewId) return true;
 				return false;
 			});
+		}
+
+		// Apply "hide completed" filter if active
+		if (this.navigator?.isHideCompleted()) {
+			gridTasks = gridTasks.filter(t => !t.completed);
 		}
 
 		// Render quadrant grid with filtered tasks

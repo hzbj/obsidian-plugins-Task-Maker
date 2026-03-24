@@ -87,6 +87,31 @@
 	flex-shrink: 0;
 }
 
+/* ============ Filter Toggle Button ============ */
+.tm-filter-toggle-btn {
+	margin-left: auto;
+	padding: 4px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 11px;
+	white-space: nowrap;
+	transition: all 0.15s ease;
+}
+
+.tm-filter-toggle-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.tm-filter-toggle-btn.tm-filter-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
 /* ============ Mode Tabs ============ */
 
 .tm-mode-tab {
@@ -119,6 +144,8 @@
 .tm-phase-controls {
 	display: flex;
 	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 /* ============ Breadcrumb ============ */
@@ -651,6 +678,44 @@
 .tm-task-source:hover {
 	color: var(--text-accent);
 	background: var(--background-modifier-hover);
+}
+
+/* ============ Task Tree / Collapse ============ */
+.tm-task-children {
+	padding-left: 16px;
+	margin-left: 8px;
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.tm-task-collapse-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	font-size: 10px;
+	color: var(--text-muted);
+	cursor: pointer;
+	flex-shrink: 0;
+	border-radius: 3px;
+	transition: color 0.1s ease, background 0.1s ease;
+}
+
+.tm-task-collapse-toggle:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.tm-task-child-count {
+	display: inline-block;
+	font-size: 10px;
+	padding: 1px 6px;
+	border-radius: 8px;
+	background: var(--background-secondary);
+	color: var(--text-faint);
+	white-space: nowrap;
+	flex-shrink: 0;
+	margin-left: 4px;
 }
 
 /* ============ Task Category ============ */

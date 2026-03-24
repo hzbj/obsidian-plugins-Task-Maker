@@ -7,6 +7,7 @@ import { TaskScannerService } from './services/TaskScannerService';
 import { TimeTreeService } from './services/TimeTreeService';
 import { ViewRegistryService } from './services/ViewRegistryService';
 import { NoteLinkerService } from './services/NoteLinkerService';
+import { TimeBlocksSyncService } from './services/TimeBlocksSyncService';
 import { MatrixView } from './ui/MatrixView';
 import { SettingsTab } from './settings/SettingsTab';
 
@@ -19,6 +20,7 @@ export default class TaskMakerPlugin extends Plugin {
 	private timeTree!: TimeTreeService;
 	private viewRegistry!: ViewRegistryService;
 	private noteLinker!: NoteLinkerService;
+	private timeBlocksSync!: TimeBlocksSyncService;
 	private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async onload(): Promise<void> {
@@ -36,6 +38,7 @@ export default class TaskMakerPlugin extends Plugin {
 		this.timeTree.rebuild();
 		this.viewRegistry = new ViewRegistryService(this.timeTree, () => this.settings);
 		this.noteLinker = new NoteLinkerService(this.app, this.timeTree, () => this.settings);
+		this.timeBlocksSync = new TimeBlocksSyncService(this.app, () => this.settings);
 
 		// Register the matrix view
 		this.registerView(VIEW_TYPE_MATRIX, (leaf) =>
@@ -48,7 +51,7 @@ export default class TaskMakerPlugin extends Plugin {
 				this.viewRegistry,
 				this.noteLinker,
 				() => this.settings,
-				(id, label) => this.createPhaseNote(id, label)
+				(file, id, label) => this.addPhaseToActiveNote(file, id, label)
 			)
 		);
 
@@ -80,7 +83,8 @@ export default class TaskMakerPlugin extends Plugin {
 			this.app,
 			this,
 			this.viewRegistry,
-			this.eventBus
+			this.eventBus,
+			this.timeBlocksSync
 		));
 
 		// Listen for file modifications for incremental scanning
@@ -273,6 +277,35 @@ export default class TaskMakerPlugin extends Plugin {
 			await this.reconcilePhaseNotes();
 		} catch (e) {
 			new Notice(`创建失败: ${(e as Error).message}`);
+		}
+	}
+
+	async addPhaseToActiveNote(file: TFile, phaseId: string, phaseLabel: string): Promise<void> {
+		const validation = this.viewRegistry.isValidPhaseId(phaseId);
+		if (!validation.valid) {
+			new Notice(`无效的阶段 ID: ${validation.reason}`);
+			return;
+		}
+
+		if (this.settings.phases.some(p => p.id === phaseId)) {
+			new Notice(`阶段 "${phaseId}" 已存在`);
+			return;
+		}
+
+		try {
+			await this.app.fileManager.processFrontMatter(file, (fm) => {
+				fm.phase = true;
+				fm['phase-id'] = phaseId;
+				fm['phase-label'] = phaseLabel;
+			});
+
+			new Notice(`已将阶段属性添加到: ${file.basename}`);
+
+			await this.waitForMetadataCache(file.path);
+			await this.taskScanner.fullScan();
+			await this.reconcilePhaseNotes();
+		} catch (e) {
+			new Notice(`添加阶段属性失败: ${(e as Error).message}`);
 		}
 	}
 

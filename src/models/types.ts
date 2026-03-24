@@ -29,6 +29,15 @@ export interface Task {
 	quadrantAssignments: Record<string, QuadrantCode>;
 	/** Category name parsed from inline tag, null = uncategorized */
 	category: string | null;
+	/** Tab-based indent depth (0 = no indent, 1 = one tab, etc.) */
+	indentLevel: number;
+}
+
+// ============ Task Tree ============
+
+export interface TaskTreeNode {
+	task: Task;
+	children: TaskTreeNode[];
 }
 
 // ============ Views ============
