@@ -27,37 +27,16 @@ __export(main_exports, {
   default: () => TaskMakerPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian11 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/models/constants.ts
 var VIEW_TYPE_MATRIX = "task-maker-matrix";
 var QUADRANT_CODES = ["ui", "in", "un", "nn"];
 var CHECKBOX_REGEX = /^(\s*- \[)([ xX])(\]\s+)(.+)$/;
-var TIME_VIEW_ID_PATTERNS = {
-  week: /^\d{4}w(0[1-9]|[1-4]\d|5[0-3])$/
-};
 var DEFAULT_SETTINGS = {
   triggerTags: ["task", "todo"],
   tagNamespace: "T",
   phases: [],
-  categories: [
-    { id: "work", name: "\u5DE5\u4F5C", color: "#4a9eff" },
-    { id: "personal", name: "\u4E2A\u4EBA", color: "#51cf66" },
-    { id: "study", name: "\u5B66\u4E60", color: "#fcc419" }
-  ],
-  timeView: {
-    startYear: (/* @__PURE__ */ new Date()).getFullYear() - 1,
-    endYear: (/* @__PURE__ */ new Date()).getFullYear() + 1,
-    weekStart: 1
-  },
-  noteAssociation: {
-    enabled: true,
-    timeNotePatterns: {
-      week: "GGGG[W]WW"
-    },
-    noteSearchFolders: [],
-    contentHeadings: ["\u76EE\u6807", "Plan", "\u8BA1\u5212", "Goals"]
-  },
   ui: {
     quadrantLabels: {
       ui: "\u7D27\u6025\u4E14\u91CD\u8981",
@@ -234,8 +213,6 @@ var TagManagerService = class {
     text = text.replace(/^\s*- \[[ xX]\]\s+/, "");
     const regex = this.buildQuadrantRegex();
     text = text.replace(regex, "");
-    const catRegex = this.buildCategoryRegex();
-    text = text.replace(catRegex, "");
     for (const tag of triggerTags) {
       const hashTag = "#" + tag;
       let result = "";
@@ -260,61 +237,6 @@ var TagManagerService = class {
       text = result;
     }
     return text.replace(/\s{2,}/g, " ").trim();
-  }
-  /** Build a regex that matches category tags with the current namespace */
-  buildCategoryRegex() {
-    const prefix = this.escapeRegex(this.getPrefix());
-    return new RegExp(`#${prefix}cat([^\\s#]+)`, "g");
-  }
-  /**
-   * Parse the category tag from a line of text.
-   * If multiple found, last one wins (single-category rule).
-   */
-  parseCategoryTag(line) {
-    const regex = this.buildCategoryRegex();
-    let last = null;
-    let match;
-    while ((match = regex.exec(line)) !== null) {
-      last = match[1];
-    }
-    return last;
-  }
-  /**
-   * Update a task's category tag in its source file atomically.
-   * Pass null to remove the category.
-   */
-  async updateCategoryTag(task, newCategory) {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof import_obsidian.TFile))
-      return false;
-    const expectedRaw = task.rawLine;
-    const prefix = this.getPrefix();
-    const escapedPrefix = this.escapeRegex(prefix);
-    const allCatPattern = new RegExp(`\\s*#${escapedPrefix}cat[^\\s#]+`, "g");
-    let newLine = expectedRaw.replace(allCatPattern, "");
-    if (newCategory !== null) {
-      newLine = `${newLine} #${prefix}cat${newCategory}`;
-    }
-    newLine = newLine.replace(/\s{2,}/g, " ").trim();
-    if (newLine === expectedRaw)
-      return true;
-    let success = false;
-    await this.app.vault.process(file, (content) => {
-      const lines = content.split("\n");
-      if (task.lineNumber < lines.length && lines[task.lineNumber] === expectedRaw) {
-        lines[task.lineNumber] = newLine;
-        success = true;
-        return lines.join("\n");
-      }
-      const idx = lines.indexOf(expectedRaw);
-      if (idx !== -1) {
-        lines[idx] = newLine;
-        success = true;
-        return lines.join("\n");
-      }
-      return content;
-    });
-    return success;
   }
   escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -387,7 +309,6 @@ var TaskScannerService = class {
         continue;
       }
       const quadrantAssignments = this.tagManager.parseQuadrantTags(line);
-      const category = this.tagManager.parseCategoryTag(line);
       const text = this.tagManager.cleanDisplayText(line, settings.triggerTags);
       const indentLevel = ((_b = (_a = line.match(/^\t*/)) == null ? void 0 : _a[0]) != null ? _b : "").length;
       tasks.push({
@@ -399,7 +320,6 @@ var TaskScannerService = class {
         completed,
         triggerType: shouldForce ? "frontmatter" : hasFrontmatterTrigger ? "frontmatter" : "inline",
         quadrantAssignments,
-        category,
         indentLevel
       });
     }
@@ -518,101 +438,13 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// src/services/TimeTreeService.ts
-var import_obsidian3 = require("obsidian");
-var TimeTreeService = class {
-  constructor(getSettings) {
-    this.getSettings = getSettings;
-    this.root = [];
-    this.nodeMap = /* @__PURE__ */ new Map();
-  }
-  /** Rebuild the time tree — now a flat list of week nodes */
-  rebuild() {
-    this.root = [];
-    this.nodeMap.clear();
-    const settings = this.getSettings();
-    const { startYear, endYear, weekStart } = settings.timeView;
-    const weekUnit = weekStart === 1 ? "isoWeek" : "week";
-    const globalStart = (0, import_obsidian3.moment)(`${startYear}-01-01`).startOf(weekUnit);
-    const globalEnd = (0, import_obsidian3.moment)(`${endYear}-12-31`).endOf(weekUnit);
-    const cursor = globalStart.clone();
-    const seen = /* @__PURE__ */ new Set();
-    while (cursor.isSameOrBefore(globalEnd)) {
-      const weekNum = weekStart === 1 ? cursor.isoWeek() : cursor.week();
-      const weekYear = weekStart === 1 ? cursor.isoWeekYear() : cursor.weekYear();
-      const wViewId = `${weekYear}w${String(weekNum).padStart(2, "0")}`;
-      if (!seen.has(wViewId)) {
-        const weekStartDate = cursor.clone().startOf(weekUnit);
-        const weekEndDate = cursor.clone().endOf(weekUnit);
-        const node = {
-          type: "week",
-          viewId: wViewId,
-          label: `${weekYear} W${weekNum}`,
-          start: weekStartDate.format("YYYY-MM-DD"),
-          end: weekEndDate.format("YYYY-MM-DD"),
-          children: []
-        };
-        this.root.push(node);
-        this.nodeMap.set(wViewId, node);
-        seen.add(wViewId);
-      }
-      cursor.add(1, "week");
-    }
-  }
-  getRoot() {
-    return this.root;
-  }
-  getNode(viewId) {
-    return this.nodeMap.get(viewId);
-  }
-  getParent(viewId) {
-    return void 0;
-  }
-  getParentId(viewId) {
-    return void 0;
-  }
-  getChildren(viewId) {
-    const node = this.nodeMap.get(viewId);
-    return node ? node.children : [];
-  }
-  getSiblings(viewId) {
-    return this.root;
-  }
-  /** Get the breadcrumb path — for a flat structure, just the node itself */
-  getBreadcrumb(viewId) {
-    const node = this.nodeMap.get(viewId);
-    return node ? [node] : [];
-  }
-  /** Get the viewId for "today" at week level */
-  getCurrentViewId(level) {
-    const now = (0, import_obsidian3.moment)();
-    const settings = this.getSettings();
-    if (settings.timeView.weekStart === 1) {
-      return `${now.isoWeekYear()}w${String(now.isoWeek()).padStart(2, "0")}`;
-    }
-    return `${now.weekYear()}w${String(now.week()).padStart(2, "0")}`;
-  }
-};
-
 // src/services/ViewRegistryService.ts
 var ViewRegistryService = class {
-  constructor(timeTree, getSettings) {
-    this.timeTree = timeTree;
+  constructor(getSettings) {
     this.getSettings = getSettings;
   }
   /** Get a view definition by its ID */
   getView(viewId) {
-    var _a;
-    const timeNode = this.timeTree.getNode(viewId);
-    if (timeNode) {
-      return {
-        id: timeNode.viewId,
-        type: timeNode.type,
-        label: timeNode.label,
-        parentId: (_a = this.timeTree.getParentId(viewId)) != null ? _a : null,
-        timePeriod: { start: timeNode.start, end: timeNode.end }
-      };
-    }
     const phase = this.getSettings().phases.find((p) => p.id === viewId);
     if (phase) {
       return {
@@ -635,7 +467,7 @@ var ViewRegistryService = class {
       timePeriod: p.timePeriod
     }));
   }
-  /** Validate that a phase ID doesn't conflict with time view IDs */
+  /** Validate that a phase ID is well-formed and unique */
   isValidPhaseId(id) {
     if (!id || id.length === 0) {
       return { valid: false, reason: "ID cannot be empty" };
@@ -646,11 +478,6 @@ var ViewRegistryService = class {
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(id)) {
       return { valid: false, reason: "ID must start with a letter and contain only letters, numbers, and underscores" };
     }
-    for (const [type, pattern] of Object.entries(TIME_VIEW_ID_PATTERNS)) {
-      if (pattern.test(id)) {
-        return { valid: false, reason: `ID conflicts with ${type} time view pattern` };
-      }
-    }
     if (this.getSettings().phases.some((p) => p.id === id)) {
       return { valid: false, reason: "Phase ID already exists" };
     }
@@ -658,11 +485,6 @@ var ViewRegistryService = class {
   }
   /** Determine the view type of a given viewId */
   getViewType(viewId) {
-    for (const [type, pattern] of Object.entries(TIME_VIEW_ID_PATTERNS)) {
-      if (pattern.test(viewId)) {
-        return type;
-      }
-    }
     if (this.getSettings().phases.some((p) => p.id === viewId)) {
       return "phase";
     }
@@ -670,227 +492,8 @@ var ViewRegistryService = class {
   }
 };
 
-// src/services/NoteLinkerService.ts
-var import_obsidian4 = require("obsidian");
-var NoteLinkerService = class {
-  constructor(app, timeTree, getSettings) {
-    this.app = app;
-    this.timeTree = timeTree;
-    this.getSettings = getSettings;
-  }
-  /**
-   * Find notes associated with a given viewId based on filename date matching.
-   */
-  findAssociatedNotes(viewId) {
-    const settings = this.getSettings();
-    if (!settings.noteAssociation.enabled)
-      return [];
-    const node = this.timeTree.getNode(viewId);
-    if (!node) {
-      const phase = settings.phases.find((p) => p.id === viewId);
-      if (phase == null ? void 0 : phase.noteFilePath) {
-        const file = this.app.vault.getAbstractFileByPath(phase.noteFilePath);
-        if (file instanceof import_obsidian4.TFile)
-          return [file];
-      }
-      return [];
-    }
-    const pattern = settings.noteAssociation.timeNotePatterns[node.type];
-    if (!pattern)
-      return [];
-    const expectedStr = (0, import_obsidian4.moment)(node.start).format(pattern);
-    const escaped = expectedStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const boundaryRegex = new RegExp(`(?<![\\w])${escaped}(?![\\w])`);
-    const searchFolders = settings.noteAssociation.noteSearchFolders;
-    const files = this.app.vault.getMarkdownFiles().filter((file) => {
-      if (searchFolders.length > 0) {
-        const inFolder = searchFolders.some(
-          (folder) => file.path.startsWith(folder.endsWith("/") ? folder : folder + "/")
-        );
-        if (!inFolder)
-          return false;
-      }
-      return boundaryRegex.test(file.basename);
-    });
-    return files;
-  }
-  /**
-   * Extract content from an associated note under specific headings.
-   */
-  async extractNoteContent(file) {
-    const settings = this.getSettings();
-    const headings = settings.noteAssociation.contentHeadings;
-    if (headings.length === 0)
-      return "";
-    const content = await this.app.vault.cachedRead(file);
-    const lines = content.split("\n");
-    const extracted = [];
-    let capturing = false;
-    let captureLevel = 0;
-    for (const line of lines) {
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-      if (headingMatch) {
-        const level = headingMatch[1].length;
-        const title = headingMatch[2].trim();
-        if (capturing && level <= captureLevel) {
-          capturing = false;
-        }
-        if (headings.some((h) => title.toLowerCase().includes(h.toLowerCase()))) {
-          capturing = true;
-          captureLevel = level;
-          extracted.push(line);
-          continue;
-        }
-      }
-      if (capturing) {
-        extracted.push(line);
-      }
-    }
-    return extracted.join("\n").trim();
-  }
-  /**
-   * Get associated notes with their extracted content.
-   */
-  async getAssociatedNotesWithContent(viewId) {
-    const files = this.findAssociatedNotes(viewId);
-    const results = [];
-    for (const file of files) {
-      const extractedContent = await this.extractNoteContent(file);
-      results.push({
-        file,
-        viewId,
-        extractedContent
-      });
-    }
-    return results;
-  }
-};
-
-// src/services/TimeBlocksSyncService.ts
-var import_obsidian5 = require("obsidian");
-var TimeBlocksSyncService = class {
-  constructor(app, getSettings) {
-    this.app = app;
-    this.getSettings = getSettings;
-    this.INDEX_FILE = "time-blocks-data/index.json";
-  }
-  /**
-   * 检查 time-blocks-data 索引文件是否存在
-   */
-  async isAvailable() {
-    const file = this.app.vault.getAbstractFileByPath(this.INDEX_FILE);
-    return file instanceof import_obsidian5.TFile;
-  }
-  /**
-   * 读取 time-blocks-data 的分类数据
-   */
-  async fetchCategories() {
-    const file = this.app.vault.getAbstractFileByPath(this.INDEX_FILE);
-    if (!(file instanceof import_obsidian5.TFile)) {
-      throw new Error("\u627E\u4E0D\u5230 time-blocks-data/index.json \u6587\u4EF6");
-    }
-    const content = await this.app.vault.read(file);
-    const data = JSON.parse(content);
-    if (!data.categories || !Array.isArray(data.categories)) {
-      throw new Error("time-blocks-data \u683C\u5F0F\u4E0D\u6B63\u786E");
-    }
-    return data.categories;
-  }
-  /**
-   * 将 time-blocks 的分类转换为插件的分类格式
-   */
-  convertToCategoryPreset(tbCategory) {
-    const cleanId = this.extractCleanId(tbCategory.id);
-    return {
-      id: cleanId,
-      name: tbCategory.name,
-      color: tbCategory.color
-    };
-  }
-  /**
-   * 从 time-blocks ID 中提取干净的 ID
-   * 例如 "睡觉-1772985761668" -> "睡觉"
-   */
-  extractCleanId(id) {
-    return id.replace(/-\d+$/, "");
-  }
-  /**
-   * 同步 time-blocks 的分类到插件设置
-   * @param mergeMode 合并模式：'replace' 替换所有，'merge' 合并（保留现有）
-   * @returns 同步结果统计
-   */
-  async syncCategories(mergeMode = "merge") {
-    try {
-      const tbCategories = await this.fetchCategories();
-      const settings = this.getSettings();
-      const newCategories = tbCategories.map((c) => this.convertToCategoryPreset(c));
-      let added = 0;
-      let updated = 0;
-      let unchanged = 0;
-      if (mergeMode === "replace") {
-        const existingIds = new Set(settings.categories.map((c) => c.id));
-        const newIds = new Set(newCategories.map((c) => c.id));
-        added = newCategories.filter((c) => !existingIds.has(c.id)).length;
-        updated = newCategories.filter((c) => existingIds.has(c.id)).length;
-        unchanged = 0;
-        settings.categories = newCategories;
-      } else {
-        const existingMap = new Map(settings.categories.map((c) => [c.id, c]));
-        for (const newCat of newCategories) {
-          const existing = existingMap.get(newCat.id);
-          if (!existing) {
-            settings.categories.push(newCat);
-            added++;
-          } else if (existing.name !== newCat.name || existing.color !== newCat.color) {
-            existing.name = newCat.name;
-            existing.color = newCat.color;
-            updated++;
-          } else {
-            unchanged++;
-          }
-        }
-      }
-      return {
-        success: true,
-        added,
-        updated,
-        unchanged,
-        message: `\u540C\u6B65\u5B8C\u6210\uFF1A\u65B0\u589E ${added} \u4E2A\uFF0C\u66F4\u65B0 ${updated} \u4E2A\uFF0C\u672A\u53D8\u5316 ${unchanged} \u4E2A`
-      };
-    } catch (error) {
-      return {
-        success: false,
-        added: 0,
-        updated: 0,
-        unchanged: 0,
-        message: `\u540C\u6B65\u5931\u8D25\uFF1A${error.message}`
-      };
-    }
-  }
-  /**
-   * 预览将要同步的分类（不实际修改设置）
-   */
-  async previewSync() {
-    try {
-      const tbCategories = await this.fetchCategories();
-      const categories = tbCategories.map((c) => this.convertToCategoryPreset(c));
-      return {
-        success: true,
-        categories,
-        message: `\u627E\u5230 ${categories.length} \u4E2A\u5206\u7C7B`
-      };
-    } catch (error) {
-      return {
-        success: false,
-        categories: [],
-        message: `\u8BFB\u53D6\u5931\u8D25\uFF1A${error.message}`
-      };
-    }
-  }
-};
-
 // src/ui/MatrixView.ts
-var import_obsidian9 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/ui/DragDropManager.ts
 var DragDropManager = class {
@@ -1038,67 +641,18 @@ var PhaseSelector = class {
   }
 };
 
-// src/ui/components/TimeBreadcrumb.ts
-var TimeBreadcrumb = class {
-  constructor(container, timeTree, eventBus) {
-    this.container = container;
-    this.timeTree = timeTree;
-    this.eventBus = eventBus;
-    this.el = container.createDiv({ cls: "tm-breadcrumb" });
-  }
-  render(currentViewId) {
-    this.el.empty();
-    const currentNode = this.timeTree.getNode(currentViewId);
-    if (currentNode) {
-      const siblings = this.timeTree.getSiblings(currentViewId);
-      const currentIdx = siblings.findIndex((s) => s.viewId === currentViewId);
-      const leftBtn = this.el.createEl("button", { cls: "tm-breadcrumb-arrow" });
-      leftBtn.textContent = "\u25C0";
-      leftBtn.disabled = currentIdx <= 0;
-      if (currentIdx > 0) {
-        leftBtn.addEventListener("click", () => {
-          this.navigateTo(siblings[currentIdx - 1]);
-        });
-      }
-      this.el.createSpan({
-        cls: "tm-breadcrumb-item tm-breadcrumb-current",
-        text: currentNode.label
-      });
-      const rightBtn = this.el.createEl("button", { cls: "tm-breadcrumb-arrow" });
-      rightBtn.textContent = "\u25B6";
-      rightBtn.disabled = currentIdx >= siblings.length - 1;
-      if (currentIdx < siblings.length - 1) {
-        rightBtn.addEventListener("click", () => {
-          this.navigateTo(siblings[currentIdx + 1]);
-        });
-      }
-    }
-  }
-  navigateTo(node) {
-    this.eventBus.emit("view-switched", {
-      viewId: node.viewId,
-      viewType: node.type
-    });
-  }
-};
-
 // src/ui/components/ViewNavigator.ts
 var ViewNavigator = class {
-  constructor(container, viewRegistry, timeTree, eventBus, onAddPhase, onToggleFilter) {
+  constructor(container, viewRegistry, eventBus, onAddPhase, onToggleFilter) {
     this.container = container;
     this.viewRegistry = viewRegistry;
-    this.timeTree = timeTree;
     this.eventBus = eventBus;
     this.onAddPhase = onAddPhase;
     this.onToggleFilter = onToggleFilter;
-    this.currentMode = "time";
-    this.currentTimeLevel = "week";
     this.hideCompleted = false;
     this.el = container.createDiv({ cls: "tm-nav-bar" });
-    this.modeTabsEl = this.el.createDiv({ cls: "tm-mode-tabs" });
-    this.createModeTab("time", "\u5468\u89C6\u56FE");
-    this.createModeTab("phase", "\u9636\u6BB5\u89C6\u56FE");
-    this.filterBtn = this.modeTabsEl.createEl("button", {
+    const topRow = this.el.createDiv({ cls: "tm-nav-top-row" });
+    this.filterBtn = topRow.createEl("button", {
       cls: "tm-filter-toggle-btn",
       text: "\u9690\u85CF\u5DF2\u5B8C\u6210"
     });
@@ -1109,18 +663,7 @@ var ViewNavigator = class {
       this.filterBtn.textContent = this.hideCompleted ? "\u663E\u793A\u5168\u90E8" : "\u9690\u85CF\u5DF2\u5B8C\u6210";
       (_a = this.onToggleFilter) == null ? void 0 : _a.call(this);
     });
-    this.timeControlsEl = this.el.createDiv({ cls: "tm-time-controls" });
-    this.timeBreadcrumb = new TimeBreadcrumb(this.timeControlsEl, timeTree, eventBus);
-    const timeActionsEl = this.timeControlsEl.createDiv({ cls: "tm-time-actions" });
-    this.todayBtn = timeActionsEl.createEl("button", {
-      cls: "tm-today-btn",
-      text: "\u672C\u5468"
-    });
-    this.todayBtn.addEventListener("click", () => {
-      const viewId = this.timeTree.getCurrentViewId("week");
-      this.eventBus.emit("view-switched", { viewId, viewType: "week" });
-    });
-    this.scanHostEl = timeActionsEl.createDiv({ cls: "tm-scan-host" });
+    this.scanHostEl = topRow.createDiv({ cls: "tm-scan-host" });
     this.phaseControlsEl = this.el.createDiv({ cls: "tm-phase-controls" });
     this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus);
     if (this.onAddPhase) {
@@ -1131,54 +674,12 @@ var ViewNavigator = class {
       });
       addBtn.addEventListener("click", () => this.onAddPhase());
     }
-    this.setMode("time");
-  }
-  createModeTab(mode, label) {
-    const tab = this.modeTabsEl.createEl("button", {
-      cls: "tm-mode-tab",
-      text: label
-    });
-    tab.dataset.mode = mode;
-    tab.addEventListener("click", () => {
-      this.setMode(mode);
-      if (mode === "time") {
-        const viewId = this.timeTree.getCurrentViewId("week");
-        this.eventBus.emit("view-switched", { viewId, viewType: "week" });
-      } else {
-        const phases = this.viewRegistry.getPhaseViews();
-        if (phases.length > 0) {
-          this.eventBus.emit("view-switched", {
-            viewId: phases[0].id,
-            viewType: "phase"
-          });
-        }
-      }
-    });
-  }
-  setMode(mode) {
-    this.currentMode = mode;
-    this.timeControlsEl.style.display = mode === "time" ? "flex" : "none";
-    this.phaseControlsEl.style.display = mode === "phase" ? "flex" : "none";
-    this.modeTabsEl.querySelectorAll(".tm-mode-tab").forEach((tab) => {
-      const el = tab;
-      el.classList.toggle("tm-mode-tab-active", el.dataset.mode === mode);
-    });
-  }
-  updateTimeView(viewId) {
-    const node = this.timeTree.getNode(viewId);
-    if (node) {
-      this.currentTimeLevel = node.type;
-    }
-    this.timeBreadcrumb.render(viewId);
   }
   updatePhaseView(viewId) {
     this.phaseSelector.setCurrentPhase(viewId);
   }
   refreshPhases() {
     this.phaseSelector.refresh();
-  }
-  getMode() {
-    return this.currentMode;
   }
   getScanHost() {
     return this.scanHostEl;
@@ -1189,7 +690,6 @@ var ViewNavigator = class {
 };
 
 // src/ui/components/TaskItem.ts
-var import_obsidian6 = require("obsidian");
 var TaskItem = class {
   constructor(container, task, app, tagManager, eventBus, dragDropManager, settings, collapseOptions) {
     this.container = container;
@@ -1200,59 +700,15 @@ var TaskItem = class {
     this.dragDropManager = dragDropManager;
     this.settings = settings;
     this.collapseOptions = collapseOptions;
-    var _a;
     this.el = container.createDiv({ cls: "tm-task-item" });
     if (task.completed) {
       this.el.classList.add("tm-task-completed");
     }
-    if (task.category) {
-      const preset = settings.categories.find((c) => c.name === task.category);
-      const color = (_a = preset == null ? void 0 : preset.color) != null ? _a : "#888";
-      this.el.style.setProperty("--tm-category-color", color);
-      this.el.classList.add("tm-task-categorized");
-    }
     this.render();
     this.dragDropManager.setupDraggable(this.el, task.id);
-    this.el.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      const menu = new import_obsidian6.Menu();
-      for (const cat of this.settings.categories) {
-        menu.addItem((item) => {
-          item.setTitle(cat.name);
-          if (this.task.category === cat.name)
-            item.setIcon("checkmark");
-          item.onClick(async () => {
-            const success = await this.tagManager.updateCategoryTag(this.task, cat.name);
-            if (success) {
-              this.eventBus.emit("task-category-changed", {
-                taskId: this.task.id,
-                category: cat.name
-              });
-            }
-          });
-        });
-      }
-      if (this.task.category) {
-        menu.addSeparator();
-        menu.addItem((item) => {
-          item.setTitle("\u6E05\u9664\u5206\u7C7B");
-          item.setIcon("x");
-          item.onClick(async () => {
-            const success = await this.tagManager.updateCategoryTag(this.task, null);
-            if (success) {
-              this.eventBus.emit("task-category-changed", {
-                taskId: this.task.id,
-                category: null
-              });
-            }
-          });
-        });
-      }
-      menu.showAtMouseEvent(e);
-    });
   }
   render() {
-    var _a, _b;
+    var _a;
     const opts = this.collapseOptions;
     if (opts == null ? void 0 : opts.hasChildren) {
       const toggle = this.el.createSpan({ cls: "tm-task-collapse-toggle" });
@@ -1283,16 +739,9 @@ var TaskItem = class {
       const badge = this.el.createSpan({ cls: "tm-task-child-count" });
       badge.textContent = `${opts.childCount}\u4E2A\u5B50\u4EFB\u52A1`;
     }
-    if (this.task.category) {
-      const preset = this.settings.categories.find((c) => c.name === this.task.category);
-      const color = (_a = preset == null ? void 0 : preset.color) != null ? _a : "#888";
-      const badge = this.el.createSpan({ cls: "tm-task-category-badge" });
-      badge.textContent = this.task.category;
-      badge.style.setProperty("--tm-category-color", color);
-    }
     if (this.settings.ui.showSourceFile) {
       const sourceEl = this.el.createDiv({ cls: "tm-task-source" });
-      const fileName = (_b = this.task.filePath.split("/").pop()) != null ? _b : this.task.filePath;
+      const fileName = (_a = this.task.filePath.split("/").pop()) != null ? _a : this.task.filePath;
       sourceEl.textContent = fileName;
       sourceEl.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1509,185 +958,9 @@ var QuadrantGrid = class {
   }
 };
 
-// src/ui/components/ContextPanel.ts
-var import_obsidian7 = require("obsidian");
-var ContextPanel = class {
-  constructor(container, timeTree, eventBus, app, tagManager, settings) {
-    this.container = container;
-    this.timeTree = timeTree;
-    this.eventBus = eventBus;
-    this.app = app;
-    this.tagManager = tagManager;
-    this.settings = settings;
-    this.expandedPhases = /* @__PURE__ */ new Set();
-    this.el = container.createDiv({ cls: "tm-context-panel" });
-    this.contentEl = this.el.createDiv({ cls: "tm-context-content" });
-  }
-  /**
-   * Render phase overview in week view.
-   * Shows each phase's name, description, progress, and expandable task details.
-   */
-  render(currentViewId, allTasks) {
-    this.contentEl.empty();
-    this.el.style.display = "none";
-    const phases = this.settings.phases;
-    if (phases.length === 0)
-      return;
-    this.el.style.display = "block";
-    const header = this.contentEl.createDiv({ cls: "tm-context-header" });
-    header.textContent = "\u9636\u6BB5\u6982\u89C8";
-    let collapsed = false;
-    header.addEventListener("click", () => {
-      collapsed = !collapsed;
-      phasesContainer.style.display = collapsed ? "none" : "block";
-      header.classList.toggle("tm-collapsed", collapsed);
-    });
-    const phasesContainer = this.contentEl.createDiv({ cls: "tm-context-phases" });
-    for (const phase of phases.sort((a, b) => a.order - b.order)) {
-      this.renderPhaseCard(phasesContainer, phase, allTasks);
-    }
-  }
-  renderPhaseCard(container, phase, allTasks) {
-    const card = container.createDiv({ cls: "tm-context-phase-card" });
-    const nameEl = card.createDiv({ cls: "tm-context-phase-name" });
-    nameEl.textContent = phase.label;
-    nameEl.addEventListener("click", () => {
-      this.eventBus.emit("view-switched", {
-        viewId: phase.id,
-        viewType: "phase"
-      });
-    });
-    if (phase.description) {
-      const descEl = card.createDiv({ cls: "tm-context-phase-description" });
-      descEl.textContent = phase.description;
-    }
-    const grouped = {
-      ui: [],
-      in: [],
-      un: [],
-      nn: []
-    };
-    let totalAll = 0;
-    let completedAll = 0;
-    for (const task of allTasks) {
-      const q = task.quadrantAssignments[phase.id];
-      if (q && grouped[q]) {
-        grouped[q].push(task);
-        totalAll++;
-        if (task.completed)
-          completedAll++;
-      } else if (phase.noteFilePath && task.filePath === phase.noteFilePath) {
-        totalAll++;
-        if (task.completed)
-          completedAll++;
-      }
-    }
-    if (totalAll > 0) {
-      const progressRow = card.createDiv({ cls: "tm-context-phase-progress" });
-      const countText = progressRow.createSpan({ cls: "tm-context-phase-count" });
-      countText.textContent = `${completedAll}/${totalAll}`;
-      const barContainer = progressRow.createDiv({ cls: "tm-context-bar" });
-      const barFill = barContainer.createDiv({ cls: "tm-context-bar-fill" });
-      barFill.style.width = `${completedAll / totalAll * 100}%`;
-    }
-    const hasAnyTasks = totalAll > 0;
-    if (hasAnyTasks) {
-      const summaryEl = card.createDiv({ cls: "tm-context-summary" });
-      for (const code of QUADRANT_CODES) {
-        const tasks = grouped[code];
-        if (tasks.length === 0)
-          continue;
-        const completed = tasks.filter((t) => t.completed).length;
-        const cell = summaryEl.createDiv({ cls: `tm-context-cell tm-context-${code}` });
-        cell.style.setProperty("--tm-quadrant-color", this.settings.ui.quadrantColors[code]);
-        const label = cell.createDiv({ cls: "tm-context-label" });
-        label.textContent = this.settings.ui.quadrantLabels[code];
-        const count = cell.createDiv({ cls: "tm-context-count" });
-        count.textContent = `${completed}/${tasks.length}`;
-      }
-    }
-    if (hasAnyTasks) {
-      const isExpanded = this.expandedPhases.has(phase.id);
-      const detailsContainer = card.createDiv({ cls: "tm-context-phase-details" });
-      detailsContainer.style.display = isExpanded ? "block" : "none";
-      const toggleBtn = card.createEl("button", { cls: "tm-context-phase-toggle" });
-      const iconSpan = toggleBtn.createSpan({ cls: "tm-toggle-icon" });
-      const labelSpan = toggleBtn.createSpan();
-      const updateToggle = (expanded) => {
-        iconSpan.empty();
-        (0, import_obsidian7.setIcon)(iconSpan, expanded ? "chevron-up" : "chevron-down");
-        labelSpan.textContent = expanded ? "\u6536\u8D77\u4EFB\u52A1" : "\u67E5\u770B\u4EFB\u52A1";
-      };
-      updateToggle(isExpanded);
-      toggleBtn.addEventListener("click", () => {
-        const nowExpanded = this.expandedPhases.has(phase.id);
-        if (nowExpanded) {
-          this.expandedPhases.delete(phase.id);
-          detailsContainer.style.display = "none";
-        } else {
-          this.expandedPhases.add(phase.id);
-          detailsContainer.style.display = "block";
-        }
-        updateToggle(!nowExpanded);
-      });
-      this.renderPhaseDetails(detailsContainer, phase, grouped);
-    }
-  }
-  renderPhaseDetails(container, phase, grouped) {
-    for (const code of QUADRANT_CODES) {
-      const tasks = grouped[code];
-      if (tasks.length === 0)
-        continue;
-      const group = container.createDiv({ cls: "tm-context-detail-group" });
-      const header = group.createDiv({ cls: "tm-context-detail-header" });
-      header.style.setProperty("--tm-quadrant-color", this.settings.ui.quadrantColors[code]);
-      header.textContent = `${this.settings.ui.quadrantLabels[code]} (${tasks.length})`;
-      for (const task of tasks) {
-        this.renderDetailTaskItem(group, task);
-      }
-    }
-  }
-  renderDetailTaskItem(container, task) {
-    var _a;
-    const item = container.createDiv({ cls: "tm-context-detail-item" });
-    if (task.completed) {
-      item.classList.add("tm-context-detail-completed");
-    }
-    const checkbox = item.createEl("input", {
-      type: "checkbox",
-      cls: "tm-context-detail-checkbox"
-    });
-    checkbox.checked = task.completed;
-    checkbox.addEventListener("change", async () => {
-      const success = await this.tagManager.toggleTaskCompletion(task);
-      if (success) {
-        this.eventBus.emit("task-toggled", {
-          taskId: task.id,
-          completed: !task.completed
-        });
-      }
-    });
-    const textEl = item.createSpan({ cls: "tm-context-detail-text" });
-    textEl.textContent = task.text;
-    const fileName = (_a = task.filePath.split("/").pop()) != null ? _a : task.filePath;
-    const sourceEl = item.createSpan({ cls: "tm-context-detail-source" });
-    sourceEl.textContent = fileName;
-    sourceEl.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const file = this.app.vault.getAbstractFileByPath(task.filePath);
-      if (file) {
-        const leaf = this.app.workspace.getLeaf(false);
-        leaf.openFile(file, {
-          eState: { line: task.lineNumber }
-        });
-      }
-    });
-  }
-};
-
 // src/ui/components/CreatePhaseModal.ts
-var import_obsidian8 = require("obsidian");
-var CreatePhaseModal = class extends import_obsidian8.Modal {
+var import_obsidian3 = require("obsidian");
+var CreatePhaseModal = class extends import_obsidian3.Modal {
   constructor(app, existingPhases, onSubmit, targetFileName) {
     super(app);
     this.existingPhases = existingPhases;
@@ -1716,7 +989,7 @@ var CreatePhaseModal = class extends import_obsidian8.Modal {
     }
   }
   renderModeSelector(containerEl) {
-    new import_obsidian8.Setting(containerEl).setName("\u64CD\u4F5C\u7C7B\u578B").addDropdown((dropdown) => {
+    new import_obsidian3.Setting(containerEl).setName("\u64CD\u4F5C\u7C7B\u578B").addDropdown((dropdown) => {
       dropdown.addOption("select", "\u9009\u62E9\u5DF2\u6709\u9636\u6BB5");
       dropdown.addOption("create", "\u521B\u5EFA\u65B0\u9636\u6BB5");
       dropdown.setValue(this.mode);
@@ -1735,13 +1008,13 @@ var CreatePhaseModal = class extends import_obsidian8.Modal {
     });
     const formContainer = containerEl.createDiv({ cls: "tm-phase-form-container" });
     this.renderSelectForm(formContainer);
-    new import_obsidian8.Setting(containerEl).addButton(
+    new import_obsidian3.Setting(containerEl).addButton(
       (btn) => btn.setButtonText("\u6DFB\u52A0").setCta().onClick(() => this.handleSubmit())
     );
   }
   renderSelectForm(containerEl) {
     containerEl.empty();
-    new import_obsidian8.Setting(containerEl).setName("\u9009\u62E9\u9636\u6BB5").setDesc("\u5C06\u6B64\u7B14\u8BB0\u5173\u8054\u5230\u5DF2\u5B58\u5728\u7684\u9636\u6BB5").addDropdown((dropdown) => {
+    new import_obsidian3.Setting(containerEl).setName("\u9009\u62E9\u9636\u6BB5").setDesc("\u5C06\u6B64\u7B14\u8BB0\u5173\u8054\u5230\u5DF2\u5B58\u5728\u7684\u9636\u6BB5").addDropdown((dropdown) => {
       dropdown.addOption("", "-- \u8BF7\u9009\u62E9\u9636\u6BB5 --");
       const sortedPhases = [...this.existingPhases].sort((a, b) => a.order - b.order);
       for (const phase of sortedPhases) {
@@ -1759,12 +1032,12 @@ var CreatePhaseModal = class extends import_obsidian8.Modal {
   }
   renderCreateForm(containerEl) {
     containerEl.empty();
-    new import_obsidian8.Setting(containerEl).setName("\u9636\u6BB5 ID").setDesc("\u5B57\u6BCD\u5F00\u5934\uFF0C\u652F\u6301\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\uFF0C\u5982 mvp").addText(
+    new import_obsidian3.Setting(containerEl).setName("\u9636\u6BB5 ID").setDesc("\u5B57\u6BCD\u5F00\u5934\uFF0C\u652F\u6301\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\uFF0C\u5982 mvp").addText(
       (text) => text.setPlaceholder("mvp").onChange((v) => {
         this.phaseId = v.trim();
       })
     );
-    new import_obsidian8.Setting(containerEl).setName("\u663E\u793A\u540D\u79F0").addText(
+    new import_obsidian3.Setting(containerEl).setName("\u663E\u793A\u540D\u79F0").addText(
       (text) => text.setPlaceholder("MVP\u9636\u6BB5").onChange((v) => {
         this.phaseLabel = v.trim();
       })
@@ -1773,7 +1046,7 @@ var CreatePhaseModal = class extends import_obsidian8.Modal {
   handleSubmit() {
     if (this.mode === "select") {
       if (!this.selectedExistingPhaseId) {
-        new import_obsidian8.Notice("\u8BF7\u9009\u62E9\u4E00\u4E2A\u9636\u6BB5");
+        new import_obsidian3.Notice("\u8BF7\u9009\u62E9\u4E00\u4E2A\u9636\u6BB5");
         return;
       }
       const selectedPhase = this.existingPhases.find((p) => p.id === this.selectedExistingPhaseId);
@@ -1783,7 +1056,7 @@ var CreatePhaseModal = class extends import_obsidian8.Modal {
       }
     } else {
       if (!this.phaseId || !this.phaseLabel) {
-        new import_obsidian8.Notice("\u8BF7\u8F93\u5165\u9636\u6BB5 ID \u548C\u663E\u793A\u540D\u79F0");
+        new import_obsidian3.Notice("\u8BF7\u8F93\u5165\u9636\u6BB5 ID \u548C\u663E\u793A\u540D\u79F0");
         return;
       }
       this.onSubmit(this.phaseId, this.phaseLabel);
@@ -1796,23 +1069,18 @@ var CreatePhaseModal = class extends import_obsidian8.Modal {
 };
 
 // src/ui/MatrixView.ts
-var MatrixView = class extends import_obsidian9.ItemView {
-  constructor(leaf, eventBus, taskScanner, tagManager, timeTree, viewRegistry, noteLinker, getSettings, onAddPhaseToNote) {
+var MatrixView = class extends import_obsidian4.ItemView {
+  constructor(leaf, eventBus, taskScanner, tagManager, viewRegistry, getSettings, onAddPhaseToNote) {
     super(leaf);
     this.eventBus = eventBus;
     this.taskScanner = taskScanner;
     this.tagManager = tagManager;
-    this.timeTree = timeTree;
     this.viewRegistry = viewRegistry;
-    this.noteLinker = noteLinker;
     this.getSettings = getSettings;
     this.onAddPhaseToNote = onAddPhaseToNote;
     this.currentViewId = "";
-    this.currentViewType = "week";
     this.navigator = null;
     this.quadrantGrid = null;
-    this.contextPanel = null;
-    this.noteContentEl = null;
     // Refresh/progress elements (hosted inside navigator)
     this.refreshBtn = null;
     this.progressWrapEl = null;
@@ -1833,9 +1101,8 @@ var MatrixView = class extends import_obsidian9.ItemView {
     this.onTasksChanged = () => this.refresh();
     this.onTaskUpdated = () => this.refresh();
     this.onTaskToggled = () => this.refresh();
-    this.onViewSwitched = (p) => this.switchView(p.viewId, p.viewType);
+    this.onViewSwitched = (p) => this.switchView(p.viewId);
     this.onSettingsChanged = () => this.rebuildUI();
-    this.onCategoryChanged = () => this.refresh();
   }
   getViewType() {
     return VIEW_TYPE_MATRIX;
@@ -1854,10 +1121,11 @@ var MatrixView = class extends import_obsidian9.ItemView {
     this.eventBus.on("task-toggled", this.onTaskToggled);
     this.eventBus.on("view-switched", this.onViewSwitched);
     this.eventBus.on("settings-changed", this.onSettingsChanged);
-    this.eventBus.on("task-category-changed", this.onCategoryChanged);
     this.buildUI();
-    const defaultViewId = this.timeTree.getCurrentViewId("week");
-    this.switchView(defaultViewId, "week");
+    const phases = this.viewRegistry.getPhaseViews();
+    if (phases.length > 0) {
+      this.switchView(phases[0].id);
+    }
   }
   async onClose() {
     this.eventBus.off("scan-complete", this.onScanComplete);
@@ -1867,7 +1135,6 @@ var MatrixView = class extends import_obsidian9.ItemView {
     this.eventBus.off("task-toggled", this.onTaskToggled);
     this.eventBus.off("view-switched", this.onViewSwitched);
     this.eventBus.off("settings-changed", this.onSettingsChanged);
-    this.eventBus.off("task-category-changed", this.onCategoryChanged);
   }
   buildUI() {
     const { contentEl } = this;
@@ -1877,22 +1144,21 @@ var MatrixView = class extends import_obsidian9.ItemView {
     this.navigator = new ViewNavigator(
       contentEl,
       this.viewRegistry,
-      this.timeTree,
       this.eventBus,
       this.onAddPhaseToNote ? () => {
         var _a, _b;
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
-          new import_obsidian9.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A\u7B14\u8BB0");
+          new import_obsidian4.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A\u7B14\u8BB0");
           return;
         }
         if (activeFile.extension !== "md") {
-          new import_obsidian9.Notice("\u5F53\u524D\u6587\u4EF6\u4E0D\u662F Markdown \u7B14\u8BB0");
+          new import_obsidian4.Notice("\u5F53\u524D\u6587\u4EF6\u4E0D\u662F Markdown \u7B14\u8BB0");
           return;
         }
         const cache = this.app.metadataCache.getFileCache(activeFile);
         if (((_a = cache == null ? void 0 : cache.frontmatter) == null ? void 0 : _a["phase"]) === true || ((_b = cache == null ? void 0 : cache.frontmatter) == null ? void 0 : _b["phase"]) === "true") {
-          new import_obsidian9.Notice(`\u8BE5\u7B14\u8BB0\u5DF2\u7ECF\u662F\u9636\u6BB5\u7B14\u8BB0 (${activeFile.basename})`);
+          new import_obsidian4.Notice(`\u8BE5\u7B14\u8BB0\u5DF2\u7ECF\u662F\u9636\u6BB5\u7B14\u8BB0 (${activeFile.basename})`);
           return;
         }
         const capturedFile = activeFile;
@@ -1917,14 +1183,6 @@ var MatrixView = class extends import_obsidian9.ItemView {
     const progressBarEl = this.progressWrapEl.createDiv({ cls: "tm-progress-bar" });
     this.progressFillEl = progressBarEl.createDiv({ cls: "tm-progress-fill" });
     this.progressTextEl = this.progressWrapEl.createDiv({ cls: "tm-progress-text" });
-    this.contextPanel = new ContextPanel(
-      contentEl,
-      this.timeTree,
-      this.eventBus,
-      this.app,
-      this.tagManager,
-      settings
-    );
     this.quadrantGrid = new QuadrantGrid(
       contentEl,
       this.app,
@@ -1933,27 +1191,19 @@ var MatrixView = class extends import_obsidian9.ItemView {
       this.dragDropManager,
       settings
     );
-    this.noteContentEl = contentEl.createDiv({ cls: "tm-note-content" });
   }
   rebuildUI() {
     this.buildUI();
-    this.switchView(this.currentViewId, this.currentViewType);
+    this.switchView(this.currentViewId);
   }
-  switchView(viewId, viewType) {
-    var _a, _b, _c, _d;
+  switchView(viewId) {
+    var _a;
     this.currentViewId = viewId;
-    this.currentViewType = viewType;
-    if (viewType === "phase") {
-      (_a = this.navigator) == null ? void 0 : _a.setMode("phase");
-      (_b = this.navigator) == null ? void 0 : _b.updatePhaseView(viewId);
-    } else {
-      (_c = this.navigator) == null ? void 0 : _c.setMode("time");
-      (_d = this.navigator) == null ? void 0 : _d.updateTimeView(viewId);
-    }
+    (_a = this.navigator) == null ? void 0 : _a.updatePhaseView(viewId);
     this.refresh();
   }
   async refresh() {
-    var _a, _b, _c;
+    var _a, _b;
     if (!this.currentViewId)
       return;
     const settings = this.getSettings();
@@ -1963,80 +1213,18 @@ var MatrixView = class extends import_obsidian9.ItemView {
         noteToPhase.set(phase.noteFilePath, phase.id);
       }
     }
-    if (this.currentViewType !== "phase") {
-      const associatedFiles = this.noteLinker.findAssociatedNotes(this.currentViewId);
-      for (const file of associatedFiles) {
-        await this.taskScanner.scanFile(file, true);
-      }
-    }
     const allTasks = this.taskScanner.getAllTasks();
-    let gridTasks;
-    if (this.currentViewType !== "phase") {
-      const weekNoteFiles = new Set(
-        this.noteLinker.findAssociatedNotes(this.currentViewId).map((f) => f.path)
-      );
-      const phaseIds = new Set(settings.phases.map((p) => p.id));
-      gridTasks = allTasks.filter((task) => {
-        if (task.quadrantAssignments[this.currentViewId])
-          return true;
-        if (weekNoteFiles.has(task.filePath))
-          return true;
-        if (noteToPhase.has(task.filePath))
-          return false;
-        const hasPhaseAssignment = Object.keys(task.quadrantAssignments).some((vid) => phaseIds.has(vid));
-        if (hasPhaseAssignment)
-          return false;
+    let gridTasks = allTasks.filter((task) => {
+      if (task.quadrantAssignments[this.currentViewId])
         return true;
-      });
-    } else {
-      const weekPattern = TIME_VIEW_ID_PATTERNS.week;
-      const phaseIds = new Set(settings.phases.map((p) => p.id));
-      gridTasks = allTasks.filter((task) => {
-        if (task.quadrantAssignments[this.currentViewId])
-          return true;
-        if (noteToPhase.get(task.filePath) === this.currentViewId)
-          return true;
-        return false;
-      });
-    }
+      if (noteToPhase.get(task.filePath) === this.currentViewId)
+        return true;
+      return false;
+    });
     if ((_a = this.navigator) == null ? void 0 : _a.isHideCompleted()) {
       gridTasks = gridTasks.filter((t) => !t.completed);
     }
     (_b = this.quadrantGrid) == null ? void 0 : _b.render(this.currentViewId, gridTasks);
-    if (this.currentViewType !== "phase") {
-      (_c = this.contextPanel) == null ? void 0 : _c.render(this.currentViewId, allTasks);
-    } else {
-      if (this.contextPanel) {
-        this.contextPanel.el.style.display = "none";
-      }
-    }
-    await this.loadAssociatedNotes();
-  }
-  async loadAssociatedNotes() {
-    if (!this.noteContentEl)
-      return;
-    this.noteContentEl.empty();
-    const notes = await this.noteLinker.getAssociatedNotesWithContent(this.currentViewId);
-    if (notes.length === 0) {
-      this.noteContentEl.style.display = "none";
-      return;
-    }
-    this.noteContentEl.style.display = "block";
-    const header = this.noteContentEl.createDiv({ cls: "tm-note-header" });
-    header.textContent = "\u5173\u8054\u7B14\u8BB0";
-    for (const note of notes) {
-      const noteEl = this.noteContentEl.createDiv({ cls: "tm-note-item" });
-      const titleEl = noteEl.createDiv({ cls: "tm-note-title" });
-      titleEl.textContent = note.file.basename;
-      titleEl.addEventListener("click", () => {
-        const leaf = this.app.workspace.getLeaf(false);
-        leaf.openFile(note.file);
-      });
-      if (note.extractedContent) {
-        const contentEl = noteEl.createDiv({ cls: "tm-note-extract" });
-        contentEl.textContent = note.extractedContent;
-      }
-    }
   }
   updateProgress(scanned, total) {
     if (!this.progressWrapEl || !this.progressFillEl || !this.progressTextEl)
@@ -2059,34 +1247,33 @@ var MatrixView = class extends import_obsidian9.ItemView {
 };
 
 // src/settings/SettingsTab.ts
-var import_obsidian10 = require("obsidian");
-var SettingsTab = class extends import_obsidian10.PluginSettingTab {
-  constructor(app, plugin, viewRegistry, eventBus, timeBlocksSync) {
+var import_obsidian5 = require("obsidian");
+var SettingsTab = class extends import_obsidian5.PluginSettingTab {
+  constructor(app, plugin, viewRegistry, eventBus) {
     super(app, plugin);
     this.plugin = plugin;
     this.viewRegistry = viewRegistry;
     this.eventBus = eventBus;
-    this.timeBlocksSync = timeBlocksSync || new TimeBlocksSyncService(app, () => plugin.settings);
   }
   display() {
     const { containerEl } = this;
     containerEl.empty();
     const settings = this.plugin.settings;
     containerEl.createEl("h2", { text: "\u4EFB\u52A1\u89E6\u53D1\u6807\u7B7E" });
-    new import_obsidian10.Setting(containerEl).setName("\u89E6\u53D1\u6807\u7B7E").setDesc("\u5305\u542B\u8FD9\u4E9B\u6807\u7B7E\u7684\u7B14\u8BB0\u6216\u4EFB\u52A1\u884C\u5C06\u88AB\u63D0\u53D6\u3002\u7528\u9017\u53F7\u5206\u9694\uFF0C\u4E0D\u542B # \u53F7\u3002").addText(
+    new import_obsidian5.Setting(containerEl).setName("\u89E6\u53D1\u6807\u7B7E").setDesc("\u5305\u542B\u8FD9\u4E9B\u6807\u7B7E\u7684\u7B14\u8BB0\u6216\u4EFB\u52A1\u884C\u5C06\u88AB\u63D0\u53D6\u3002\u7528\u9017\u53F7\u5206\u9694\uFF0C\u4E0D\u542B # \u53F7\u3002").addText(
       (text) => text.setPlaceholder("task, todo").setValue(settings.triggerTags.join(", ")).onChange(async (value) => {
         settings.triggerTags = value.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian10.Setting(containerEl).setName("\u6807\u7B7E\u547D\u540D\u7A7A\u95F4").setDesc("\u63D2\u4EF6\u521B\u5EFA\u7684\u8C61\u9650\u6807\u7B7E\u5C06\u5D4C\u5957\u5728\u6B64\u547D\u540D\u7A7A\u95F4\u4E0B\uFF0C\u5982\u8BBE\u4E3A T \u5219\u6807\u7B7E\u683C\u5F0F\u4E3A #T/viewId-quadrant\u3002\u7559\u7A7A\u5219\u4E0D\u52A0\u524D\u7F00\u3002").addText(
+    new import_obsidian5.Setting(containerEl).setName("\u6807\u7B7E\u547D\u540D\u7A7A\u95F4").setDesc("\u63D2\u4EF6\u521B\u5EFA\u7684\u8C61\u9650\u6807\u7B7E\u5C06\u5D4C\u5957\u5728\u6B64\u547D\u540D\u7A7A\u95F4\u4E0B\uFF0C\u5982\u8BBE\u4E3A T \u5219\u6807\u7B7E\u683C\u5F0F\u4E3A #T/viewId-quadrant\u3002\u7559\u7A7A\u5219\u4E0D\u52A0\u524D\u7F00\u3002").addText(
       (text) => text.setPlaceholder("T").setValue(settings.tagNamespace).onChange(async (value) => {
         settings.tagNamespace = value.trim();
         await this.plugin.saveSettings();
       })
     );
     containerEl.createEl("h2", { text: "\u9636\u6BB5\u7BA1\u7406" });
-    new import_obsidian10.Setting(containerEl).setName("\u4E00\u952E\u521B\u5EFA\u9636\u6BB5\u7B14\u8BB0").setDesc("\u521B\u5EFA\u5E26\u6709\u6B63\u786E frontmatter \u7684\u9636\u6BB5\u89C4\u5212\u7B14\u8BB0").addButton(
+    new import_obsidian5.Setting(containerEl).setName("\u4E00\u952E\u521B\u5EFA\u9636\u6BB5\u7B14\u8BB0").setDesc("\u521B\u5EFA\u5E26\u6709\u6B63\u786E frontmatter \u7684\u9636\u6BB5\u89C4\u5212\u7B14\u8BB0").addButton(
       (btn) => btn.setButtonText("\u65B0\u5EFA\u9636\u6BB5\u7B14\u8BB0").setCta().onClick(() => {
         new CreatePhaseModal(this.app, [], async (id, label) => {
           await this.plugin.createPhaseNote(id, label);
@@ -2095,79 +1282,25 @@ var SettingsTab = class extends import_obsidian10.PluginSettingTab {
       })
     );
     this.renderPhaseList(containerEl, settings);
-    containerEl.createEl("h2", { text: "\u5206\u7C7B\u7BA1\u7406" });
-    this.renderTimeBlocksSync(containerEl, settings);
-    this.renderCategoryList(containerEl, settings);
-    containerEl.createEl("h2", { text: "\u65F6\u95F4\u89C6\u56FE\u8BBE\u7F6E" });
-    new import_obsidian10.Setting(containerEl).setName("\u8D77\u59CB\u5E74\u4EFD").addText(
-      (text) => text.setValue(String(settings.timeView.startYear)).onChange(async (value) => {
-        const num = parseInt(value);
-        if (!isNaN(num) && num > 2e3 && num < 2100) {
-          settings.timeView.startYear = num;
-          await this.plugin.saveSettings();
-        }
-      })
-    );
-    new import_obsidian10.Setting(containerEl).setName("\u7ED3\u675F\u5E74\u4EFD").addText(
-      (text) => text.setValue(String(settings.timeView.endYear)).onChange(async (value) => {
-        const num = parseInt(value);
-        if (!isNaN(num) && num > 2e3 && num < 2100) {
-          settings.timeView.endYear = num;
-          await this.plugin.saveSettings();
-        }
-      })
-    );
-    new import_obsidian10.Setting(containerEl).setName("\u6BCF\u5468\u8D77\u59CB\u65E5").addDropdown(
-      (dropdown) => dropdown.addOption("1", "\u5468\u4E00").addOption("0", "\u5468\u65E5").setValue(String(settings.timeView.weekStart)).onChange(async (value) => {
-        settings.timeView.weekStart = parseInt(value);
-        await this.plugin.saveSettings();
-      })
-    );
-    containerEl.createEl("h2", { text: "\u7B14\u8BB0\u5173\u8054" });
-    new import_obsidian10.Setting(containerEl).setName("\u542F\u7528\u7B14\u8BB0\u5173\u8054").addToggle(
-      (toggle) => toggle.setValue(settings.noteAssociation.enabled).onChange(async (value) => {
-        settings.noteAssociation.enabled = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    const patterns = settings.noteAssociation.timeNotePatterns;
-    new import_obsidian10.Setting(containerEl).setName("\u5468\u62A5\u7B14\u8BB0\u683C\u5F0F").setDesc("Moment.js \u65E5\u671F\u683C\u5F0F\u3002\u63A8\u8350 GGGG[W]WW\uFF08ISO \u5468\u5E74+\u5468\u6570\uFF09\uFF0C\u5982 2026W11").addText(
-      (text) => text.setValue(patterns.week).setPlaceholder("GGGG[W]WW").onChange(async (value) => {
-        patterns.week = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian10.Setting(containerEl).setName("\u641C\u7D22\u6587\u4EF6\u5939").setDesc("\u9650\u5B9A\u7B14\u8BB0\u5173\u8054\u641C\u7D22\u7684\u6587\u4EF6\u5939\u8DEF\u5F84\uFF0C\u9017\u53F7\u5206\u9694\uFF0C\u7559\u7A7A\u641C\u7D22\u5168\u5E93").addText(
-      (text) => text.setValue(settings.noteAssociation.noteSearchFolders.join(", ")).onChange(async (value) => {
-        settings.noteAssociation.noteSearchFolders = value.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian10.Setting(containerEl).setName("\u63D0\u53D6\u5185\u5BB9\u6807\u9898").setDesc("\u4ECE\u5173\u8054\u7B14\u8BB0\u4E2D\u63D0\u53D6\u8FD9\u4E9B\u6807\u9898\u4E0B\u7684\u5185\u5BB9\uFF0C\u9017\u53F7\u5206\u9694").addText(
-      (text) => text.setValue(settings.noteAssociation.contentHeadings.join(", ")).onChange(async (value) => {
-        settings.noteAssociation.contentHeadings = value.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
-        await this.plugin.saveSettings();
-      })
-    );
     containerEl.createEl("h2", { text: "\u754C\u9762\u5B9A\u5236" });
     const quadrantCodes = ["ui", "in", "un", "nn"];
     const defaultLabels = ["\u7D27\u6025\u4E14\u91CD\u8981", "\u91CD\u8981\u4E0D\u7D27\u6025", "\u7D27\u6025\u4E0D\u91CD\u8981", "\u4E0D\u7D27\u6025\u4E0D\u91CD\u8981"];
     for (let i = 0; i < quadrantCodes.length; i++) {
       const code = quadrantCodes[i];
-      new import_obsidian10.Setting(containerEl).setName(`${defaultLabels[i]} \u6807\u7B7E`).addText(
+      new import_obsidian5.Setting(containerEl).setName(`${defaultLabels[i]} \u6807\u7B7E`).addText(
         (text) => text.setValue(settings.ui.quadrantLabels[code]).onChange(async (value) => {
           settings.ui.quadrantLabels[code] = value;
           await this.plugin.saveSettings();
         })
       );
     }
-    new import_obsidian10.Setting(containerEl).setName("\u663E\u793A\u6765\u6E90\u6587\u4EF6").addToggle(
+    new import_obsidian5.Setting(containerEl).setName("\u663E\u793A\u6765\u6E90\u6587\u4EF6").addToggle(
       (toggle) => toggle.setValue(settings.ui.showSourceFile).onChange(async (value) => {
         settings.ui.showSourceFile = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian10.Setting(containerEl).setName("\u7D27\u51D1\u6A21\u5F0F").addToggle(
+    new import_obsidian5.Setting(containerEl).setName("\u7D27\u51D1\u6A21\u5F0F").addToggle(
       (toggle) => toggle.setValue(settings.ui.compactMode).onChange(async (value) => {
         settings.ui.compactMode = value;
         await this.plugin.saveSettings();
@@ -2178,17 +1311,17 @@ var SettingsTab = class extends import_obsidian10.PluginSettingTab {
     const listEl = containerEl.createDiv({ cls: "tm-settings-phase-list" });
     for (const phase of settings.phases) {
       const phaseEl = listEl.createDiv({ cls: "tm-settings-phase-item" });
-      new import_obsidian10.Setting(phaseEl).setName(phase.label + (phase.autoDetected ? " (auto)" : "")).setDesc(`ID: ${phase.id}` + (phase.noteFilePath ? ` | ${phase.noteFilePath}` : "")).addButton(
+      new import_obsidian5.Setting(phaseEl).setName(phase.label + (phase.autoDetected ? " (auto)" : "")).setDesc(`ID: ${phase.id}` + (phase.noteFilePath ? ` | ${phase.noteFilePath}` : "")).addButton(
         (btn) => btn.setButtonText("\u5220\u9664").setWarning().onClick(async () => {
           if (phase.autoDetected) {
-            new import_obsidian10.Notice("\u81EA\u52A8\u68C0\u6D4B\u7684\u9636\u6BB5\u4F1A\u5728\u4E0B\u6B21\u626B\u63CF\u65F6\u91CD\u65B0\u51FA\u73B0\uFF0C\u9664\u975E\u79FB\u9664\u7B14\u8BB0\u4E2D\u7684 phase frontmatter\u3002");
+            new import_obsidian5.Notice("\u81EA\u52A8\u68C0\u6D4B\u7684\u9636\u6BB5\u4F1A\u5728\u4E0B\u6B21\u626B\u63CF\u65F6\u91CD\u65B0\u51FA\u73B0\uFF0C\u9664\u975E\u79FB\u9664\u7B14\u8BB0\u4E2D\u7684 phase frontmatter\u3002");
           }
           settings.phases = settings.phases.filter((p) => p.id !== phase.id);
           await this.plugin.saveSettings();
           this.display();
         })
       );
-      new import_obsidian10.Setting(phaseEl).setName("\u63CF\u8FF0").addTextArea(
+      new import_obsidian5.Setting(phaseEl).setName("\u63CF\u8FF0").addTextArea(
         (text) => {
           var _a;
           return text.setPlaceholder("\u9636\u6BB5\u63CF\u8FF0\uFF08\u53EF\u9009\uFF09").setValue((_a = phase.description) != null ? _a : "").onChange(async (value) => {
@@ -2202,7 +1335,7 @@ var SettingsTab = class extends import_obsidian10.PluginSettingTab {
     let newId = "";
     let newLabel = "";
     let newDesc = "";
-    new import_obsidian10.Setting(addEl).setName("\u6DFB\u52A0\u65B0\u9636\u6BB5").addText(
+    new import_obsidian5.Setting(addEl).setName("\u6DFB\u52A0\u65B0\u9636\u6BB5").addText(
       (text) => text.setPlaceholder("\u9636\u6BB5ID (\u5982 mvp)").onChange((value) => {
         newId = value;
       })
@@ -2216,7 +1349,7 @@ var SettingsTab = class extends import_obsidian10.PluginSettingTab {
           return;
         const validation = this.viewRegistry.isValidPhaseId(newId);
         if (!validation.valid) {
-          new import_obsidian10.Notice(`\u65E0\u6548\u7684\u9636\u6BB5ID: ${validation.reason}`);
+          new import_obsidian5.Notice(`\u65E0\u6548\u7684\u9636\u6BB5ID: ${validation.reason}`);
           return;
         }
         settings.phases.push({
@@ -2229,132 +1362,16 @@ var SettingsTab = class extends import_obsidian10.PluginSettingTab {
         this.display();
       })
     );
-    new import_obsidian10.Setting(addEl).setName("\u9636\u6BB5\u63CF\u8FF0").addTextArea(
+    new import_obsidian5.Setting(addEl).setName("\u9636\u6BB5\u63CF\u8FF0").addTextArea(
       (text) => text.setPlaceholder("\u9636\u6BB5\u63CF\u8FF0\uFF08\u53EF\u9009\uFF09").onChange((value) => {
         newDesc = value;
-      })
-    );
-  }
-  async renderTimeBlocksSync(containerEl, settings) {
-    const isAvailable = await this.timeBlocksSync.isAvailable();
-    if (!isAvailable) {
-      const descEl = containerEl.createEl("p", {
-        text: "\u672A\u68C0\u6D4B\u5230 time-blocks \u63D2\u4EF6\u6570\u636E\uFF08time-blocks-data/index.json \u4E0D\u5B58\u5728\uFF09",
-        cls: "tm-sync-not-available"
-      });
-      descEl.style.color = "var(--text-muted)";
-      descEl.style.fontSize = "0.9em";
-      return;
-    }
-    const syncContainer = containerEl.createDiv({ cls: "tm-timeblocks-sync" });
-    new import_obsidian10.Setting(syncContainer).setName("\u4ECE Time Blocks \u540C\u6B65\u5206\u7C7B").setDesc("\u540C\u6B65 time-blocks \u63D2\u4EF6\u4E2D\u7684\u5206\u7C7B\u8BBE\u7F6E\u5230\u5F53\u524D\u63D2\u4EF6").addButton(
-      (btn) => btn.setButtonText("\u9884\u89C8\u540C\u6B65").onClick(async () => {
-        const result = await this.timeBlocksSync.previewSync();
-        if (result.success) {
-          const catList = result.categories.map((c) => `\u2022 ${c.name} (${c.color})`).join("\n");
-          new import_obsidian10.Notice(`\u627E\u5230\u4EE5\u4E0B\u5206\u7C7B:
-${catList}`, 5e3);
-        } else {
-          new import_obsidian10.Notice(result.message);
-        }
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("\u5408\u5E76\u540C\u6B65").setCta().onClick(async () => {
-        const result = await this.timeBlocksSync.syncCategories("merge");
-        new import_obsidian10.Notice(result.message);
-        if (result.success) {
-          await this.plugin.saveSettings();
-          this.display();
-        }
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("\u5B8C\u5168\u66FF\u6362").setWarning().onClick(async () => {
-        if (!confirm("\u786E\u5B9A\u8981\u5B8C\u5168\u66FF\u6362\u73B0\u6709\u5206\u7C7B\u5417\uFF1F\u8FD9\u5C06\u5220\u9664\u6240\u6709\u73B0\u6709\u5206\u7C7B\u3002")) {
-          return;
-        }
-        const result = await this.timeBlocksSync.syncCategories("replace");
-        new import_obsidian10.Notice(result.message);
-        if (result.success) {
-          await this.plugin.saveSettings();
-          this.display();
-        }
-      })
-    );
-  }
-  renderCategoryList(containerEl, settings) {
-    const listEl = containerEl.createDiv({ cls: "tm-settings-category-list" });
-    for (const cat of settings.categories) {
-      const catEl = listEl.createDiv({ cls: "tm-settings-category-item" });
-      const setting = new import_obsidian10.Setting(catEl);
-      const nameFragment = createFragment((frag) => {
-        const dot = frag.createSpan({ cls: "tm-color-dot" });
-        dot.style.backgroundColor = cat.color;
-        frag.appendText(cat.name);
-      });
-      setting.nameEl.empty();
-      setting.nameEl.appendChild(nameFragment);
-      setting.setDesc(`ID: ${cat.id}`);
-      setting.addColorPicker(
-        (picker) => picker.setValue(cat.color).onChange(async (value) => {
-          cat.color = value;
-          await this.plugin.saveSettings();
-          this.display();
-        })
-      );
-      setting.addButton(
-        (btn) => btn.setButtonText("\u5220\u9664").setWarning().onClick(async () => {
-          settings.categories = settings.categories.filter((c) => c.id !== cat.id);
-          await this.plugin.saveSettings();
-          this.display();
-        })
-      );
-    }
-    const addEl = containerEl.createDiv({ cls: "tm-settings-add-category" });
-    let newCatId = "";
-    let newCatName = "";
-    let newCatColor = "#4a9eff";
-    new import_obsidian10.Setting(addEl).setName("\u6DFB\u52A0\u65B0\u5206\u7C7B").addText(
-      (text) => text.setPlaceholder("\u5206\u7C7BID (\u5982 work)").onChange((value) => {
-        newCatId = value;
-      })
-    ).addText(
-      (text) => text.setPlaceholder("\u663E\u793A\u540D\u79F0 (\u5982 \u5DE5\u4F5C)").onChange((value) => {
-        newCatName = value;
-      })
-    ).addColorPicker(
-      (picker) => picker.setValue(newCatColor).onChange((value) => {
-        newCatColor = value;
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("\u6DFB\u52A0").setCta().onClick(async () => {
-        const id = newCatId.trim();
-        const name = newCatName.trim();
-        if (!id || !name) {
-          new import_obsidian10.Notice("\u5206\u7C7BID\u548C\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
-          return;
-        }
-        if (!/^[a-zA-Z0-9_]+$/.test(id)) {
-          new import_obsidian10.Notice("\u5206\u7C7BID\u53EA\u80FD\u5305\u542B\u5B57\u6BCD\u3001\u6570\u5B57\u548C\u4E0B\u5212\u7EBF");
-          return;
-        }
-        if (settings.categories.some((c) => c.id === id)) {
-          new import_obsidian10.Notice(`\u5206\u7C7BID "${id}" \u5DF2\u5B58\u5728`);
-          return;
-        }
-        if (/[\s#]/.test(name)) {
-          new import_obsidian10.Notice("\u5206\u7C7B\u540D\u79F0\u4E0D\u80FD\u5305\u542B\u7A7A\u683C\u6216 # \u53F7");
-          return;
-        }
-        settings.categories.push({ id, name, color: newCatColor });
-        await this.plugin.saveSettings();
-        this.display();
       })
     );
   }
 };
 
 // src/main.ts
-var TaskMakerPlugin = class extends import_obsidian11.Plugin {
+var TaskMakerPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -2370,11 +1387,7 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
       this.eventBus,
       () => this.settings
     );
-    this.timeTree = new TimeTreeService(() => this.settings);
-    this.timeTree.rebuild();
-    this.viewRegistry = new ViewRegistryService(this.timeTree, () => this.settings);
-    this.noteLinker = new NoteLinkerService(this.app, this.timeTree, () => this.settings);
-    this.timeBlocksSync = new TimeBlocksSyncService(this.app, () => this.settings);
+    this.viewRegistry = new ViewRegistryService(() => this.settings);
     this.registerView(
       VIEW_TYPE_MATRIX,
       (leaf) => new MatrixView(
@@ -2382,9 +1395,7 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
         this.eventBus,
         this.taskScanner,
         this.tagManager,
-        this.timeTree,
         this.viewRegistry,
-        this.noteLinker,
         () => this.settings,
         (file, id, label) => this.addPhaseToActiveNote(file, id, label)
       )
@@ -2411,12 +1422,11 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
       this.app,
       this,
       this.viewRegistry,
-      this.eventBus,
-      this.timeBlocksSync
+      this.eventBus
     ));
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
-        if (file instanceof import_obsidian11.TFile && file.extension === "md") {
+        if (file instanceof import_obsidian6.TFile && file.extension === "md") {
           this.taskScanner.incrementalScan(file);
         }
       })
@@ -2440,32 +1450,19 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
     this.taskScanner.clearCache();
   }
   async loadSettings() {
-    var _a, _b, _c, _d, _e;
+    var _a, _b;
     const data = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
     if (data) {
-      this.settings.timeView = Object.assign({}, DEFAULT_SETTINGS.timeView, data.timeView);
-      this.settings.noteAssociation = Object.assign(
-        {},
-        DEFAULT_SETTINGS.noteAssociation,
-        data.noteAssociation
-      );
-      if ((_a = data.noteAssociation) == null ? void 0 : _a.timeNotePatterns) {
-        this.settings.noteAssociation.timeNotePatterns = Object.assign(
-          {},
-          DEFAULT_SETTINGS.noteAssociation.timeNotePatterns,
-          data.noteAssociation.timeNotePatterns
-        );
-      }
       this.settings.ui = Object.assign({}, DEFAULT_SETTINGS.ui, data.ui);
-      if ((_b = data.ui) == null ? void 0 : _b.quadrantLabels) {
+      if ((_a = data.ui) == null ? void 0 : _a.quadrantLabels) {
         this.settings.ui.quadrantLabels = Object.assign(
           {},
           DEFAULT_SETTINGS.ui.quadrantLabels,
           data.ui.quadrantLabels
         );
       }
-      if ((_c = data.ui) == null ? void 0 : _c.quadrantColors) {
+      if ((_b = data.ui) == null ? void 0 : _b.quadrantColors) {
         this.settings.ui.quadrantColors = Object.assign(
           {},
           DEFAULT_SETTINGS.ui.quadrantColors,
@@ -2473,17 +1470,9 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
         );
       }
     }
-    if (((_e = (_d = data == null ? void 0 : data.noteAssociation) == null ? void 0 : _d.timeNotePatterns) == null ? void 0 : _e.week) === "YYYY-[W]ww") {
-      this.settings.noteAssociation.timeNotePatterns.week = "GGGG[W]WW";
-      await this.saveData(this.settings);
-    }
-    if ((data == null ? void 0 : data.categories) && Array.isArray(data.categories)) {
-      this.settings.categories = data.categories;
-    }
   }
   async saveSettings() {
     await this.saveData(this.settings);
-    this.timeTree.rebuild();
     this.eventBus.emit("settings-changed", { settings: this.settings });
   }
   async reconcilePhaseNotes() {
@@ -2549,16 +1538,14 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
   async createPhaseNote(phaseId, phaseLabel) {
     const validation = this.viewRegistry.isValidPhaseId(phaseId);
     if (!validation.valid) {
-      new import_obsidian11.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
+      new import_obsidian6.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
       return;
     }
     if (this.settings.phases.some((p) => p.id === phaseId)) {
-      new import_obsidian11.Notice(`\u9636\u6BB5 "${phaseId}" \u5DF2\u5B58\u5728`);
+      new import_obsidian6.Notice(`\u9636\u6BB5 "${phaseId}" \u5DF2\u5B58\u5728`);
       return;
     }
-    const folders = this.settings.noteAssociation.noteSearchFolders;
-    const folder = folders.length > 0 ? folders[0] : "";
-    const filePath = folder ? `${folder}/${phaseId}.md` : `${phaseId}.md`;
+    const filePath = `${phaseId}.md`;
     const content = [
       "---",
       "phase: true",
@@ -2571,32 +1558,26 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
     ].join("\n");
     try {
       if (this.app.vault.getAbstractFileByPath(filePath)) {
-        new import_obsidian11.Notice(`\u6587\u4EF6 ${filePath} \u5DF2\u5B58\u5728`);
+        new import_obsidian6.Notice(`\u6587\u4EF6 ${filePath} \u5DF2\u5B58\u5728`);
         return;
       }
-      if (folder) {
-        const folderObj = this.app.vault.getAbstractFileByPath(folder);
-        if (!folderObj) {
-          await this.app.vault.createFolder(folder);
-        }
-      }
       await this.app.vault.create(filePath, content);
-      new import_obsidian11.Notice(`\u5DF2\u521B\u5EFA\u9636\u6BB5\u7B14\u8BB0: ${filePath}`);
+      new import_obsidian6.Notice(`\u5DF2\u521B\u5EFA\u9636\u6BB5\u7B14\u8BB0: ${filePath}`);
       await this.waitForMetadataCache(filePath);
       await this.taskScanner.fullScan();
       await this.reconcilePhaseNotes();
     } catch (e) {
-      new import_obsidian11.Notice(`\u521B\u5EFA\u5931\u8D25: ${e.message}`);
+      new import_obsidian6.Notice(`\u521B\u5EFA\u5931\u8D25: ${e.message}`);
     }
   }
   async addPhaseToActiveNote(file, phaseId, phaseLabel) {
     const validation = this.viewRegistry.isValidPhaseId(phaseId);
     if (!validation.valid) {
-      new import_obsidian11.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
+      new import_obsidian6.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
       return;
     }
     if (this.settings.phases.some((p) => p.id === phaseId)) {
-      new import_obsidian11.Notice(`\u9636\u6BB5 "${phaseId}" \u5DF2\u5B58\u5728`);
+      new import_obsidian6.Notice(`\u9636\u6BB5 "${phaseId}" \u5DF2\u5B58\u5728`);
       return;
     }
     try {
@@ -2605,19 +1586,19 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
         fm["phase-id"] = phaseId;
         fm["phase-label"] = phaseLabel;
       });
-      new import_obsidian11.Notice(`\u5DF2\u5C06\u9636\u6BB5\u5C5E\u6027\u6DFB\u52A0\u5230: ${file.basename}`);
+      new import_obsidian6.Notice(`\u5DF2\u5C06\u9636\u6BB5\u5C5E\u6027\u6DFB\u52A0\u5230: ${file.basename}`);
       await this.waitForMetadataCache(file.path);
       await this.taskScanner.fullScan();
       await this.reconcilePhaseNotes();
     } catch (e) {
-      new import_obsidian11.Notice(`\u6DFB\u52A0\u9636\u6BB5\u5C5E\u6027\u5931\u8D25: ${e.message}`);
+      new import_obsidian6.Notice(`\u6DFB\u52A0\u9636\u6BB5\u5C5E\u6027\u5931\u8D25: ${e.message}`);
     }
   }
   waitForMetadataCache(filePath) {
     return new Promise((resolve) => {
       var _a;
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian11.TFile && ((_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter)) {
+      if (file instanceof import_obsidian6.TFile && ((_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter)) {
         resolve();
         return;
       }
@@ -2628,7 +1609,7 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
       const onResolved = () => {
         var _a2;
         const f = this.app.vault.getAbstractFileByPath(filePath);
-        if (f instanceof import_obsidian11.TFile && ((_a2 = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _a2.frontmatter)) {
+        if (f instanceof import_obsidian6.TFile && ((_a2 = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _a2.frontmatter)) {
           clearTimeout(timeout);
           this.app.metadataCache.off("resolved", onResolved);
           resolve();

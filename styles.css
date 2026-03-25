@@ -17,12 +17,13 @@
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.tm-mode-tabs {
+.tm-nav-top-row {
 	display: flex;
-	gap: 4px;
+	align-items: center;
+	gap: 8px;
 }
 
-/* ============ Scan Host (inside time-actions) ============ */
+/* ============ Scan Host ============ */
 .tm-scan-host {
 	display: flex;
 	align-items: center;
@@ -89,7 +90,6 @@
 
 /* ============ Filter Toggle Button ============ */
 .tm-filter-toggle-btn {
-	margin-left: auto;
 	padding: 4px 10px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 6px;
@@ -99,6 +99,7 @@
 	font-size: 11px;
 	white-space: nowrap;
 	transition: all 0.15s ease;
+	flex-shrink: 0;
 }
 
 .tm-filter-toggle-btn:hover {
@@ -112,145 +113,12 @@
 	border-color: var(--interactive-accent);
 }
 
-/* ============ Mode Tabs ============ */
-
-.tm-mode-tab {
-	padding: 6px 16px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	background: var(--background-secondary);
-	color: var(--text-muted);
-	cursor: pointer;
-	font-size: 13px;
-	transition: all 0.15s ease;
-}
-
-.tm-mode-tab:hover {
-	background: var(--background-modifier-hover);
-}
-
-.tm-mode-tab-active {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	border-color: var(--interactive-accent);
-}
-
-.tm-time-controls {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-}
-
+/* ============ Phase Controls ============ */
 .tm-phase-controls {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	flex-wrap: wrap;
-}
-
-/* ============ Breadcrumb ============ */
-.tm-breadcrumb {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	flex-wrap: wrap;
-}
-
-.tm-breadcrumb-arrow {
-	width: 28px;
-	height: 28px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-secondary);
-	color: var(--text-muted);
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 10px;
-}
-
-.tm-breadcrumb-arrow:hover:not(:disabled) {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-
-.tm-breadcrumb-arrow:disabled {
-	opacity: 0.3;
-	cursor: not-allowed;
-}
-
-.tm-breadcrumb-sep {
-	color: var(--text-faint);
-	font-size: 12px;
-}
-
-.tm-breadcrumb-item {
-	font-size: 13px;
-	padding: 2px 4px;
-	border-radius: 3px;
-}
-
-.tm-breadcrumb-link {
-	color: var(--text-accent);
-	cursor: pointer;
-}
-
-.tm-breadcrumb-link:hover {
-	background: var(--background-modifier-hover);
-	text-decoration: underline;
-}
-
-.tm-breadcrumb-current {
-	color: var(--text-normal);
-	font-weight: 600;
-}
-
-.tm-breadcrumb-children {
-	display: flex;
-	gap: 4px;
-	flex-wrap: wrap;
-	margin-top: 4px;
-}
-
-.tm-breadcrumb-child {
-	padding: 3px 10px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
-	background: var(--background-secondary);
-	color: var(--text-muted);
-	cursor: pointer;
-	font-size: 12px;
-}
-
-.tm-breadcrumb-child:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-
-/* ============ Today Button ============ */
-.tm-time-actions {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-top: 4px;
-	flex-wrap: wrap;
-}
-
-.tm-today-btn {
-	padding: 4px 12px;
-	border: 1px solid var(--interactive-accent);
-	border-radius: 4px;
-	background: transparent;
-	color: var(--interactive-accent);
-	cursor: pointer;
-	font-size: 12px;
-	flex-shrink: 0;
-}
-
-.tm-today-btn:hover {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
 }
 
 /* ============ Phase Selector ============ */
@@ -311,257 +179,6 @@
 	color: var(--text-on-accent);
 	border-color: var(--interactive-accent);
 	border-style: solid;
-}
-
-/* ============ Context Panel ============ */
-.tm-context-panel {
-	margin-bottom: 12px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-}
-
-.tm-context-header {
-	padding: 8px 12px;
-	background: var(--background-secondary);
-	font-size: 13px;
-	font-weight: 600;
-	color: var(--text-muted);
-	cursor: pointer;
-	user-select: none;
-	border-radius: 8px 8px 0 0;
-}
-
-.tm-context-header:hover {
-	background: var(--background-modifier-hover);
-}
-
-.tm-context-header::before {
-	content: '\25BC ';
-	font-size: 10px;
-}
-
-.tm-context-header.tm-collapsed::before {
-	content: '\25B6 ';
-}
-
-.tm-context-header.tm-collapsed {
-	border-radius: 8px;
-}
-
-.tm-context-summary {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 0;
-}
-
-.tm-context-cell {
-	padding: 8px 10px;
-	background: var(--background-primary);
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.tm-context-cell:nth-child(odd) {
-	border-right: 1px solid var(--background-modifier-border);
-}
-
-.tm-context-label {
-	font-size: 11px;
-	color: var(--text-faint);
-	margin-bottom: 2px;
-}
-
-.tm-context-count {
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--text-normal);
-}
-
-.tm-context-bar {
-	height: 4px;
-	background: var(--background-modifier-border);
-	border-radius: 2px;
-	margin-top: 4px;
-	overflow: hidden;
-}
-
-.tm-context-bar-fill {
-	height: 100%;
-	background: var(--tm-quadrant-color, var(--interactive-accent));
-	border-radius: 2px;
-	transition: width 0.3s ease;
-}
-
-/* ---- Phase Cards (inside Context Panel) ---- */
-.tm-context-phases {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	padding: 8px 10px 10px;
-}
-
-.tm-context-phase-card {
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	background: var(--background-primary);
-	padding: 10px 12px;
-	transition: box-shadow 0.15s ease;
-}
-
-.tm-context-phase-card:hover {
-	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-}
-
-.tm-context-phase-name {
-	font-size: 13px;
-	font-weight: 600;
-	color: var(--text-accent);
-	cursor: pointer;
-	margin-bottom: 2px;
-}
-
-.tm-context-phase-name:hover {
-	text-decoration: underline;
-}
-
-.tm-context-phase-description {
-	font-size: 12px;
-	color: var(--text-muted);
-	line-height: 1.4;
-	margin-bottom: 6px;
-}
-
-.tm-context-phase-progress {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 6px;
-}
-
-.tm-context-phase-progress .tm-context-bar {
-	flex: 1;
-}
-
-.tm-context-phase-count {
-	font-size: 12px;
-	color: var(--text-muted);
-	flex-shrink: 0;
-}
-
-/* Compact quadrant cells inside phase cards */
-.tm-context-phase-card .tm-context-summary {
-	border-radius: 4px;
-	overflow: hidden;
-	border: 1px solid var(--background-modifier-border);
-}
-
-.tm-context-phase-card .tm-context-cell {
-	padding: 4px 8px;
-}
-
-.tm-context-phase-card .tm-context-count {
-	font-size: 12px;
-}
-
-/* ---- Phase Detail Toggle ---- */
-.tm-context-phase-toggle {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	padding: 3px 10px;
-	margin-top: 6px;
-	font-size: 11px;
-	color: var(--text-muted);
-	cursor: pointer;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-secondary);
-	transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.tm-context-phase-toggle:hover {
-	color: var(--text-normal);
-	background: var(--background-modifier-hover);
-	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
-}
-
-.tm-context-phase-toggle .tm-toggle-icon {
-	display: flex;
-	width: 12px;
-	height: 12px;
-}
-
-.tm-context-phase-toggle .tm-toggle-icon svg {
-	width: 12px;
-	height: 12px;
-}
-
-/* ---- Expanded Phase Task Details ---- */
-.tm-context-phase-details {
-	margin-top: 8px;
-	padding-top: 8px;
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.tm-context-detail-group {
-	margin-bottom: 8px;
-}
-
-.tm-context-detail-group:last-child {
-	margin-bottom: 0;
-}
-
-.tm-context-detail-header {
-	font-size: 11px;
-	font-weight: 600;
-	color: var(--tm-quadrant-color, var(--text-muted));
-	padding-left: 8px;
-	margin-bottom: 4px;
-	border-left: 2px solid var(--tm-quadrant-color, var(--text-faint));
-}
-
-.tm-context-detail-item {
-	display: flex;
-	align-items: flex-start;
-	gap: 6px;
-	padding: 3px 4px;
-	border-radius: 3px;
-	font-size: 12px;
-	transition: background 0.1s ease;
-}
-
-.tm-context-detail-item:hover {
-	background: var(--background-modifier-hover);
-}
-
-.tm-context-detail-checkbox {
-	margin-top: 2px;
-	cursor: pointer;
-	flex-shrink: 0;
-}
-
-.tm-context-detail-text {
-	flex: 1;
-	min-width: 0;
-	color: var(--text-normal);
-	line-height: 1.4;
-	word-break: break-word;
-}
-
-.tm-context-detail-completed .tm-context-detail-text {
-	text-decoration: line-through;
-	color: var(--text-faint);
-}
-
-.tm-context-detail-source {
-	font-size: 10px;
-	color: var(--text-faint);
-	cursor: pointer;
-	flex-shrink: 0;
-	margin-top: 2px;
-}
-
-.tm-context-detail-source:hover {
-	color: var(--text-accent);
 }
 
 /* ============ Quadrant Grid ============ */
@@ -718,24 +335,6 @@
 	margin-left: 4px;
 }
 
-/* ============ Task Category ============ */
-.tm-task-categorized {
-	border-left: 3px solid var(--tm-category-color, #888);
-}
-
-.tm-task-category-badge {
-	display: inline-block;
-	font-size: 10px;
-	padding: 1px 6px;
-	border-radius: 8px;
-	background: color-mix(in srgb, var(--tm-category-color, #888) 15%, var(--background-primary));
-	color: var(--tm-category-color, #888);
-	white-space: nowrap;
-	flex-shrink: 0;
-	margin-left: 4px;
-	vertical-align: middle;
-}
-
 /* ============ Drag & Drop Visual Feedback ============ */
 .tm-quadrant.tm-drag-over {
 	border-color: var(--interactive-accent);
@@ -781,48 +380,6 @@
 	font-weight: 500;
 }
 
-/* ============ Associated Notes ============ */
-.tm-note-content {
-	margin-top: 12px;
-	border-top: 1px solid var(--background-modifier-border);
-	padding-top: 8px;
-}
-
-.tm-note-header {
-	font-size: 13px;
-	font-weight: 600;
-	color: var(--text-muted);
-	margin-bottom: 8px;
-}
-
-.tm-note-item {
-	margin-bottom: 8px;
-	padding: 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-}
-
-.tm-note-title {
-	font-size: 13px;
-	font-weight: 500;
-	color: var(--text-accent);
-	cursor: pointer;
-	margin-bottom: 4px;
-}
-
-.tm-note-title:hover {
-	text-decoration: underline;
-}
-
-.tm-note-extract {
-	font-size: 12px;
-	color: var(--text-muted);
-	white-space: pre-wrap;
-	line-height: 1.5;
-	max-height: 150px;
-	overflow-y: auto;
-}
-
 /* ============ Settings ============ */
 .tm-settings-phase-list {
 	margin-bottom: 12px;
@@ -836,29 +393,6 @@
 	margin-top: 8px;
 	padding-top: 8px;
 	border-top: 1px solid var(--background-modifier-border);
-}
-
-.tm-settings-category-list {
-	margin-bottom: 12px;
-}
-
-.tm-settings-category-item {
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.tm-settings-add-category {
-	margin-top: 8px;
-	padding-top: 8px;
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.tm-color-dot {
-	display: inline-block;
-	width: 12px;
-	height: 12px;
-	border-radius: 50%;
-	margin-right: 6px;
-	vertical-align: middle;
 }
 
 /* ============ Compact Mode ============ */

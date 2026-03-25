@@ -90,7 +90,6 @@ export class TaskScannerService {
 			}
 
 			const quadrantAssignments = this.tagManager.parseQuadrantTags(line);
-			const category = this.tagManager.parseCategoryTag(line);
 			const text = this.tagManager.cleanDisplayText(line, settings.triggerTags);
 			const indentLevel = (line.match(/^\t*/)?.[0] ?? '').length;
 
@@ -103,7 +102,6 @@ export class TaskScannerService {
 				completed,
 				triggerType: shouldForce ? 'frontmatter' : (hasFrontmatterTrigger ? 'frontmatter' : 'inline'),
 				quadrantAssignments,
-				category,
 				indentLevel,
 			});
 		}

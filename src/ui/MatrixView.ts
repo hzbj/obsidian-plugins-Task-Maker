@@ -1,27 +1,21 @@
-import { ItemView, WorkspaceLeaf, App, TFile, Notice } from 'obsidian';
-import { Task, ViewType, PluginSettings, QuadrantCode } from '../models/types';
-import { VIEW_TYPE_MATRIX, TIME_VIEW_ID_PATTERNS } from '../models/constants';
+import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import { Task, PluginSettings, QuadrantCode } from '../models/types';
+import { VIEW_TYPE_MATRIX } from '../models/constants';
 import { EventBus } from '../services/EventBus';
 import { TaskScannerService } from '../services/TaskScannerService';
 import { TagManagerService } from '../services/TagManagerService';
-import { TimeTreeService } from '../services/TimeTreeService';
 import { ViewRegistryService } from '../services/ViewRegistryService';
-import { NoteLinkerService } from '../services/NoteLinkerService';
 import { DragDropManager } from './DragDropManager';
-import { ViewNavigator, ViewMode } from './components/ViewNavigator';
+import { ViewNavigator } from './components/ViewNavigator';
 import { QuadrantGrid } from './components/QuadrantGrid';
-import { ContextPanel } from './components/ContextPanel';
 import { CreatePhaseModal } from './components/CreatePhaseModal';
 
 export class MatrixView extends ItemView {
 	private currentViewId: string = '';
-	private currentViewType: ViewType = 'week';
 
 	private navigator: ViewNavigator | null = null;
 	private quadrantGrid: QuadrantGrid | null = null;
-	private contextPanel: ContextPanel | null = null;
 	private dragDropManager: DragDropManager;
-	private noteContentEl: HTMLElement | null = null;
 
 	// Refresh/progress elements (hosted inside navigator)
 	private refreshBtn: HTMLButtonElement | null = null;
@@ -35,18 +29,15 @@ export class MatrixView extends ItemView {
 	private onTasksChanged: (p: { filePath: string; tasks: Task[] }) => void;
 	private onTaskUpdated: (p: { taskId: string; viewId: string; quadrant: QuadrantCode | null }) => void;
 	private onTaskToggled: (p: { taskId: string; completed: boolean }) => void;
-	private onViewSwitched: (p: { viewId: string; viewType: ViewType }) => void;
+	private onViewSwitched: (p: { viewId: string }) => void;
 	private onSettingsChanged: (p: { settings: PluginSettings }) => void;
-	private onCategoryChanged: (p: { taskId: string; category: string | null }) => void;
 
 	constructor(
 		leaf: WorkspaceLeaf,
 		private eventBus: EventBus,
 		private taskScanner: TaskScannerService,
 		private tagManager: TagManagerService,
-		private timeTree: TimeTreeService,
 		private viewRegistry: ViewRegistryService,
-		private noteLinker: NoteLinkerService,
 		private getSettings: () => PluginSettings,
 		private onAddPhaseToNote?: (file: TFile, id: string, label: string) => Promise<void>
 	) {
@@ -69,9 +60,8 @@ export class MatrixView extends ItemView {
 		this.onTasksChanged = () => this.refresh();
 		this.onTaskUpdated = () => this.refresh();
 		this.onTaskToggled = () => this.refresh();
-		this.onViewSwitched = (p) => this.switchView(p.viewId, p.viewType);
+		this.onViewSwitched = (p) => this.switchView(p.viewId);
 		this.onSettingsChanged = () => this.rebuildUI();
-		this.onCategoryChanged = () => this.refresh();
 	}
 
 	getViewType(): string {
@@ -95,13 +85,14 @@ export class MatrixView extends ItemView {
 		this.eventBus.on('task-toggled', this.onTaskToggled);
 		this.eventBus.on('view-switched', this.onViewSwitched);
 		this.eventBus.on('settings-changed', this.onSettingsChanged);
-		this.eventBus.on('task-category-changed', this.onCategoryChanged);
 
 		this.buildUI();
 
-		// Set default view — always start with current week
-		const defaultViewId = this.timeTree.getCurrentViewId('week');
-		this.switchView(defaultViewId, 'week');
+		// Set default view — start with first available phase
+		const phases = this.viewRegistry.getPhaseViews();
+		if (phases.length > 0) {
+			this.switchView(phases[0].id);
+		}
 	}
 
 	async onClose(): Promise<void> {
@@ -112,7 +103,6 @@ export class MatrixView extends ItemView {
 		this.eventBus.off('task-toggled', this.onTaskToggled);
 		this.eventBus.off('view-switched', this.onViewSwitched);
 		this.eventBus.off('settings-changed', this.onSettingsChanged);
-		this.eventBus.off('task-category-changed', this.onCategoryChanged);
 	}
 
 	private buildUI(): void {
@@ -126,22 +116,21 @@ export class MatrixView extends ItemView {
 		this.navigator = new ViewNavigator(
 			contentEl,
 			this.viewRegistry,
-			this.timeTree,
 			this.eventBus,
 			this.onAddPhaseToNote
 				? () => {
 					const activeFile = this.app.workspace.getActiveFile();
 					if (!activeFile) {
-						new Notice('请先打开一个笔记');
+						new Notice('\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A\u7B14\u8BB0');
 						return;
 					}
 					if (activeFile.extension !== 'md') {
-						new Notice('当前文件不是 Markdown 笔记');
+						new Notice('\u5F53\u524D\u6587\u4EF6\u4E0D\u662F Markdown \u7B14\u8BB0');
 						return;
 					}
 					const cache = this.app.metadataCache.getFileCache(activeFile);
 					if (cache?.frontmatter?.['phase'] === true || cache?.frontmatter?.['phase'] === 'true') {
-						new Notice(`该笔记已经是阶段笔记 (${activeFile.basename})`);
+						new Notice(`\u8BE5\u7B14\u8BB0\u5DF2\u7ECF\u662F\u9636\u6BB5\u7B14\u8BB0 (${activeFile.basename})`);
 						return;
 					}
 					const capturedFile = activeFile;
@@ -153,7 +142,7 @@ export class MatrixView extends ItemView {
 			() => this.refresh()
 		);
 
-		// Scan button + progress (inside navigator's time controls, after "today" button)
+		// Scan button + progress (inside navigator's scan host)
 		const scanHost = this.navigator.getScanHost();
 		this.refreshBtn = scanHost.createEl('button', { cls: 'tm-refresh-btn' });
 		this.refreshBtn.textContent = '\u626B\u63CF\u4EFB\u52A1';
@@ -171,12 +160,6 @@ export class MatrixView extends ItemView {
 		this.progressFillEl = progressBarEl.createDiv({ cls: 'tm-progress-fill' });
 		this.progressTextEl = this.progressWrapEl.createDiv({ cls: 'tm-progress-text' });
 
-		// Context Panel
-		this.contextPanel = new ContextPanel(
-			contentEl, this.timeTree, this.eventBus,
-			this.app, this.tagManager, settings
-		);
-
 		// Quadrant Grid
 		this.quadrantGrid = new QuadrantGrid(
 			contentEl,
@@ -186,29 +169,16 @@ export class MatrixView extends ItemView {
 			this.dragDropManager,
 			settings
 		);
-
-		// Associated notes content area
-		this.noteContentEl = contentEl.createDiv({ cls: 'tm-note-content' });
 	}
 
 	private rebuildUI(): void {
 		this.buildUI();
-		this.switchView(this.currentViewId, this.currentViewType);
+		this.switchView(this.currentViewId);
 	}
 
-	private switchView(viewId: string, viewType: ViewType): void {
+	private switchView(viewId: string): void {
 		this.currentViewId = viewId;
-		this.currentViewType = viewType;
-
-		// Update navigator
-		if (viewType === 'phase') {
-			this.navigator?.setMode('phase');
-			this.navigator?.updatePhaseView(viewId);
-		} else {
-			this.navigator?.setMode('time');
-			this.navigator?.updateTimeView(viewId);
-		}
-
+		this.navigator?.updatePhaseView(viewId);
 		this.refresh();
 	}
 
@@ -225,44 +195,15 @@ export class MatrixView extends ItemView {
 			}
 		}
 
-		// For week view: force-scan associated note files so tasks without triggers are included
-		if (this.currentViewType !== 'phase') {
-			const associatedFiles = this.noteLinker.findAssociatedNotes(this.currentViewId);
-			for (const file of associatedFiles) {
-				await this.taskScanner.scanFile(file, true);
-			}
-		}
-
-		// Re-read all tasks after potential forced scans
+		// Re-read all tasks
 		const allTasks = this.taskScanner.getAllTasks();
 
-		// Filter tasks based on current view type to avoid cross-view redundancy
-		let gridTasks: Task[];
-		if (this.currentViewType !== 'phase') {
-			// Week view: include tasks from associated week note files
-			const weekNoteFiles = new Set(
-				this.noteLinker.findAssociatedNotes(this.currentViewId).map(f => f.path)
-			);
-			const phaseIds = new Set(settings.phases.map(p => p.id));
-			gridTasks = allTasks.filter(task => {
-				if (task.quadrantAssignments[this.currentViewId]) return true;
-				if (weekNoteFiles.has(task.filePath)) return true;
-				if (noteToPhase.has(task.filePath)) return false;
-				const hasPhaseAssignment = Object.keys(task.quadrantAssignments)
-					.some(vid => phaseIds.has(vid));
-				if (hasPhaseAssignment) return false;
-				return true;
-			});
-		} else {
-			// Phase view: include tasks from this phase's note file, exclude others
-			const weekPattern = TIME_VIEW_ID_PATTERNS.week;
-			const phaseIds = new Set(settings.phases.map(p => p.id));
-			gridTasks = allTasks.filter(task => {
-				if (task.quadrantAssignments[this.currentViewId]) return true;
-				if (noteToPhase.get(task.filePath) === this.currentViewId) return true;
-				return false;
-			});
-		}
+		// Phase view: include tasks from this phase's note file
+		let gridTasks = allTasks.filter(task => {
+			if (task.quadrantAssignments[this.currentViewId]) return true;
+			if (noteToPhase.get(task.filePath) === this.currentViewId) return true;
+			return false;
+		});
 
 		// Apply "hide completed" filter if active
 		if (this.navigator?.isHideCompleted()) {
@@ -271,49 +212,6 @@ export class MatrixView extends ItemView {
 
 		// Render quadrant grid with filtered tasks
 		this.quadrantGrid?.render(this.currentViewId, gridTasks);
-
-		// Render context panel (phase overview) — uses full task list for accurate stats
-		if (this.currentViewType !== 'phase') {
-			this.contextPanel?.render(this.currentViewId, allTasks);
-		} else {
-			if (this.contextPanel) {
-				this.contextPanel.el.style.display = 'none';
-			}
-		}
-
-		// Load associated notes
-		await this.loadAssociatedNotes();
-	}
-
-	private async loadAssociatedNotes(): Promise<void> {
-		if (!this.noteContentEl) return;
-		this.noteContentEl.empty();
-
-		const notes = await this.noteLinker.getAssociatedNotesWithContent(this.currentViewId);
-		if (notes.length === 0) {
-			this.noteContentEl.style.display = 'none';
-			return;
-		}
-
-		this.noteContentEl.style.display = 'block';
-		const header = this.noteContentEl.createDiv({ cls: 'tm-note-header' });
-		header.textContent = '关联笔记';
-
-		for (const note of notes) {
-			const noteEl = this.noteContentEl.createDiv({ cls: 'tm-note-item' });
-
-			const titleEl = noteEl.createDiv({ cls: 'tm-note-title' });
-			titleEl.textContent = note.file.basename;
-			titleEl.addEventListener('click', () => {
-				const leaf = this.app.workspace.getLeaf(false);
-				leaf.openFile(note.file);
-			});
-
-			if (note.extractedContent) {
-				const contentEl = noteEl.createDiv({ cls: 'tm-note-extract' });
-				contentEl.textContent = note.extractedContent;
-			}
-		}
 	}
 
 	private updateProgress(scanned: number, total: number): void {

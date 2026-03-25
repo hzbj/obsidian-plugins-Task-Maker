@@ -1,12 +1,8 @@
-import { TFile } from 'obsidian';
-
 // ============ Quadrant Types ============
 
 export type QuadrantCode = 'ui' | 'in' | 'un' | 'nn';
 
-export type TimeNodeType = 'week';
-
-export type ViewType = 'phase' | TimeNodeType;
+export type ViewType = 'phase';
 
 // ============ Task ============
 
@@ -27,8 +23,6 @@ export interface Task {
 	triggerType: 'frontmatter' | 'inline';
 	/** viewId -> QuadrantCode mapping, parsed from inline tags */
 	quadrantAssignments: Record<string, QuadrantCode>;
-	/** Category name parsed from inline tag, null = uncategorized */
-	category: string | null;
 	/** Tab-based indent depth (0 = no indent, 1 = one tab, etc.) */
 	indentLevel: number;
 }
@@ -61,35 +55,12 @@ export interface PhaseDefinition {
 	autoDetected?: boolean;
 }
 
-export interface TimeNode {
-	type: TimeNodeType;
-	viewId: string;
-	label: string;
-	/** ISO date string */
-	start: string;
-	/** ISO date string */
-	end: string;
-	children: TimeNode[];
-}
-
 // ============ Settings ============
 
 export interface PluginSettings {
 	triggerTags: string[];
 	tagNamespace: string;
 	phases: PhaseDefinition[];
-	categories: CategoryPreset[];
-	timeView: {
-		startYear: number;
-		endYear: number;
-		weekStart: 0 | 1;
-	};
-	noteAssociation: {
-		enabled: boolean;
-		timeNotePatterns: Record<TimeNodeType, string>;
-		noteSearchFolders: string[];
-		contentHeadings: string[];
-	};
 	ui: {
 		quadrantLabels: Record<QuadrantCode, string>;
 		quadrantColors: Record<QuadrantCode, string>;
@@ -109,15 +80,6 @@ export interface EventMap {
 	'view-switched': { viewId: string; viewType: ViewType };
 	'settings-changed': { settings: PluginSettings };
 	'phases-synced': { added: string[]; updated: string[]; removed: string[] };
-	'task-category-changed': { taskId: string; category: string | null };
-}
-
-// ============ Category Preset ============
-
-export interface CategoryPreset {
-	id: string;
-	name: string;
-	color: string;
 }
 
 // ============ Phase Detection ============
@@ -126,12 +88,4 @@ export interface DetectedPhaseInfo {
 	phaseId: string;
 	phaseLabel: string;
 	filePath: string;
-}
-
-// ============ Associated Note ============
-
-export interface AssociatedNote {
-	file: TFile;
-	viewId: string;
-	extractedContent: string;
 }

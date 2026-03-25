@@ -4,10 +4,7 @@ import { VIEW_TYPE_MATRIX, DEFAULT_SETTINGS } from './models/constants';
 import { EventBus } from './services/EventBus';
 import { TagManagerService } from './services/TagManagerService';
 import { TaskScannerService } from './services/TaskScannerService';
-import { TimeTreeService } from './services/TimeTreeService';
 import { ViewRegistryService } from './services/ViewRegistryService';
-import { NoteLinkerService } from './services/NoteLinkerService';
-import { TimeBlocksSyncService } from './services/TimeBlocksSyncService';
 import { MatrixView } from './ui/MatrixView';
 import { SettingsTab } from './settings/SettingsTab';
 
@@ -17,10 +14,7 @@ export default class TaskMakerPlugin extends Plugin {
 	private eventBus: EventBus = new EventBus();
 	private tagManager!: TagManagerService;
 	private taskScanner!: TaskScannerService;
-	private timeTree!: TimeTreeService;
 	private viewRegistry!: ViewRegistryService;
-	private noteLinker!: NoteLinkerService;
-	private timeBlocksSync!: TimeBlocksSyncService;
 	private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async onload(): Promise<void> {
@@ -34,11 +28,7 @@ export default class TaskMakerPlugin extends Plugin {
 			this.eventBus,
 			() => this.settings
 		);
-		this.timeTree = new TimeTreeService(() => this.settings);
-		this.timeTree.rebuild();
-		this.viewRegistry = new ViewRegistryService(this.timeTree, () => this.settings);
-		this.noteLinker = new NoteLinkerService(this.app, this.timeTree, () => this.settings);
-		this.timeBlocksSync = new TimeBlocksSyncService(this.app, () => this.settings);
+		this.viewRegistry = new ViewRegistryService(() => this.settings);
 
 		// Register the matrix view
 		this.registerView(VIEW_TYPE_MATRIX, (leaf) =>
@@ -47,9 +37,7 @@ export default class TaskMakerPlugin extends Plugin {
 				this.eventBus,
 				this.taskScanner,
 				this.tagManager,
-				this.timeTree,
 				this.viewRegistry,
-				this.noteLinker,
 				() => this.settings,
 				(file, id, label) => this.addPhaseToActiveNote(file, id, label)
 			)
@@ -83,8 +71,7 @@ export default class TaskMakerPlugin extends Plugin {
 			this.app,
 			this,
 			this.viewRegistry,
-			this.eventBus,
-			this.timeBlocksSync
+			this.eventBus
 		));
 
 		// Listen for file modifications for incremental scanning
@@ -122,15 +109,6 @@ export default class TaskMakerPlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 		// Deep merge nested objects
 		if (data) {
-			this.settings.timeView = Object.assign({}, DEFAULT_SETTINGS.timeView, data.timeView);
-			this.settings.noteAssociation = Object.assign(
-				{}, DEFAULT_SETTINGS.noteAssociation, data.noteAssociation
-			);
-			if (data.noteAssociation?.timeNotePatterns) {
-				this.settings.noteAssociation.timeNotePatterns = Object.assign(
-					{}, DEFAULT_SETTINGS.noteAssociation.timeNotePatterns, data.noteAssociation.timeNotePatterns
-				);
-			}
 			this.settings.ui = Object.assign({}, DEFAULT_SETTINGS.ui, data.ui);
 			if (data.ui?.quadrantLabels) {
 				this.settings.ui.quadrantLabels = Object.assign(
@@ -143,22 +121,10 @@ export default class TaskMakerPlugin extends Plugin {
 				);
 			}
 		}
-
-		// Migrate old week pattern to ISO-compatible format
-		if (data?.noteAssociation?.timeNotePatterns?.week === 'YYYY-[W]ww') {
-			this.settings.noteAssociation.timeNotePatterns.week = 'GGGG[W]WW';
-			await this.saveData(this.settings);
-		}
-
-		// Categories array: direct override (not Object.assign merge)
-		if (data?.categories && Array.isArray(data.categories)) {
-			this.settings.categories = data.categories;
-		}
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
-		this.timeTree.rebuild();
 		this.eventBus.emit('settings-changed', { settings: this.settings });
 	}
 
@@ -239,9 +205,7 @@ export default class TaskMakerPlugin extends Plugin {
 			return;
 		}
 
-		const folders = this.settings.noteAssociation.noteSearchFolders;
-		const folder = folders.length > 0 ? folders[0] : '';
-		const filePath = folder ? `${folder}/${phaseId}.md` : `${phaseId}.md`;
+		const filePath = `${phaseId}.md`;
 
 		const content = [
 			'---',
@@ -258,13 +222,6 @@ export default class TaskMakerPlugin extends Plugin {
 			if (this.app.vault.getAbstractFileByPath(filePath)) {
 				new Notice(`文件 ${filePath} 已存在`);
 				return;
-			}
-
-			if (folder) {
-				const folderObj = this.app.vault.getAbstractFileByPath(folder);
-				if (!folderObj) {
-					await this.app.vault.createFolder(folder);
-				}
 			}
 
 			await this.app.vault.create(filePath, content);

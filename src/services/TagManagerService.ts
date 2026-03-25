@@ -143,9 +143,6 @@ export class TagManagerService {
 		// Remove quadrant tags (with namespace)
 		const regex = this.buildQuadrantRegex();
 		text = text.replace(regex, '');
-		// Remove category tags (with namespace)
-		const catRegex = this.buildCategoryRegex();
-		text = text.replace(catRegex, '');
 		// Remove trigger tags (Unicode-safe, no \b)
 		for (const tag of triggerTags) {
 			const hashTag = '#' + tag;
@@ -175,74 +172,6 @@ export class TagManagerService {
 			text = result;
 		}
 		return text.replace(/\s{2,}/g, ' ').trim();
-	}
-
-	/** Build a regex that matches category tags with the current namespace */
-	private buildCategoryRegex(): RegExp {
-		const prefix = this.escapeRegex(this.getPrefix());
-		return new RegExp(`#${prefix}cat([^\\s#]+)`, 'g');
-	}
-
-	/**
-	 * Parse the category tag from a line of text.
-	 * If multiple found, last one wins (single-category rule).
-	 */
-	parseCategoryTag(line: string): string | null {
-		const regex = this.buildCategoryRegex();
-		let last: string | null = null;
-		let match;
-		while ((match = regex.exec(line)) !== null) {
-			last = match[1];
-		}
-		return last;
-	}
-
-	/**
-	 * Update a task's category tag in its source file atomically.
-	 * Pass null to remove the category.
-	 */
-	async updateCategoryTag(
-		task: Task,
-		newCategory: string | null
-	): Promise<boolean> {
-		const file = this.app.vault.getAbstractFileByPath(task.filePath);
-		if (!(file instanceof TFile)) return false;
-
-		const expectedRaw = task.rawLine;
-		const prefix = this.getPrefix();
-		const escapedPrefix = this.escapeRegex(prefix);
-
-		// Remove all existing category tags
-		const allCatPattern = new RegExp(`\\s*#${escapedPrefix}cat[^\\s#]+`, 'g');
-		let newLine = expectedRaw.replace(allCatPattern, '');
-
-		// Append new category if specified
-		if (newCategory !== null) {
-			newLine = `${newLine} #${prefix}cat${newCategory}`;
-		}
-
-		newLine = newLine.replace(/\s{2,}/g, ' ').trim();
-
-		if (newLine === expectedRaw) return true;
-
-		let success = false;
-		await this.app.vault.process(file, (content) => {
-			const lines = content.split('\n');
-			if (task.lineNumber < lines.length && lines[task.lineNumber] === expectedRaw) {
-				lines[task.lineNumber] = newLine;
-				success = true;
-				return lines.join('\n');
-			}
-			const idx = lines.indexOf(expectedRaw);
-			if (idx !== -1) {
-				lines[idx] = newLine;
-				success = true;
-				return lines.join('\n');
-			}
-			return content;
-		});
-
-		return success;
 	}
 
 	private escapeRegex(str: string): string {
