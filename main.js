@@ -429,10 +429,15 @@ var TaskScannerService = class {
     const phaseId = cache.frontmatter["phase-id"];
     const phaseLabel = cache.frontmatter["phase-label"];
     if (typeof phaseId === "string" && phaseId.trim()) {
+      const phaseStart = cache.frontmatter["phase-start"];
+      const phaseEnd = cache.frontmatter["phase-end"];
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const timePeriod = typeof phaseStart === "string" && dateRegex.test(phaseStart) && typeof phaseEnd === "string" && dateRegex.test(phaseEnd) ? { start: phaseStart, end: phaseEnd } : void 0;
       this.detectedPhases.set(file.path, {
         phaseId: phaseId.trim(),
         phaseLabel: typeof phaseLabel === "string" && phaseLabel.trim() ? phaseLabel.trim() : phaseId.trim(),
-        filePath: file.path
+        filePath: file.path,
+        timePeriod
       });
     } else {
       this.detectedPhases.delete(file.path);
@@ -656,6 +661,7 @@ var ViewNavigator = class {
     this.onToggleFilter = onToggleFilter;
     this.hideCompleted = false;
     this.phaseCollapsed = false;
+    this.timelineActive = false;
     this.el = container.createDiv({ cls: "tm-nav-bar" });
     const topRow = this.el.createDiv({ cls: "tm-nav-top-row" });
     this.phaseToggleBtn = topRow.createEl("button", {
@@ -682,6 +688,21 @@ var ViewNavigator = class {
       this.filterBtn.textContent = this.hideCompleted ? "\u663E\u793A\u5168\u90E8" : "\u9690\u85CF\u5DF2\u5B8C\u6210";
       (_a = this.onToggleFilter) == null ? void 0 : _a.call(this);
     });
+    this.timelineBtn = topRow.createEl("button", {
+      cls: "tm-timeline-toggle-btn",
+      attr: { "aria-label": "\u5207\u6362\u65F6\u95F4\u8F74\u603B\u89C8" }
+    });
+    this.timelineBtn.textContent = "\u65F6\u95F4\u8F74";
+    this.timelineBtn.addEventListener("click", () => {
+      this.timelineActive = !this.timelineActive;
+      this.timelineBtn.classList.toggle("tm-timeline-active", this.timelineActive);
+      if (this.timelineActive) {
+        this.phaseControlsEl.style.display = "none";
+      } else if (!this.phaseCollapsed) {
+        this.phaseControlsEl.style.display = "flex";
+      }
+      this.eventBus.emit("timeline-toggled", { active: this.timelineActive });
+    });
     this.scanHostEl = topRow.createDiv({ cls: "tm-scan-host" });
     this.phaseControlsEl = this.el.createDiv({ cls: "tm-phase-controls" });
     this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus);
@@ -705,6 +726,18 @@ var ViewNavigator = class {
   }
   isHideCompleted() {
     return this.hideCompleted;
+  }
+  isTimelineActive() {
+    return this.timelineActive;
+  }
+  setTimelineActive(active) {
+    this.timelineActive = active;
+    this.timelineBtn.classList.toggle("tm-timeline-active", active);
+    if (active) {
+      this.phaseControlsEl.style.display = "none";
+    } else if (!this.phaseCollapsed) {
+      this.phaseControlsEl.style.display = "flex";
+    }
   }
 };
 
@@ -775,9 +808,9 @@ var PhaseNotePanel = class {
     this.expanded = this.getSettings().ui.notePanel.defaultExpanded;
     this.renderComponent = new import_obsidian3.Component();
     this.renderComponent.load();
-    this.containerEl = parentEl.createDiv({ cls: "tm-note-panel" });
-    this.containerEl.style.display = "none";
-    this.headerEl = this.containerEl.createDiv({ cls: "tm-note-panel-header" });
+    this.el = parentEl.createDiv({ cls: "tm-note-panel" });
+    this.el.style.display = "none";
+    this.headerEl = this.el.createDiv({ cls: "tm-note-panel-header" });
     const toggleEl = this.headerEl.createSpan({ cls: "tm-note-panel-toggle" });
     toggleEl.textContent = this.expanded ? "\u25BC" : "\u25B6";
     const titleEl = this.headerEl.createSpan({ cls: "tm-note-panel-title" });
@@ -790,30 +823,30 @@ var PhaseNotePanel = class {
       toggleEl.textContent = this.expanded ? "\u25BC" : "\u25B6";
       this.bodyEl.style.display = this.expanded ? "block" : "none";
     });
-    this.bodyEl = this.containerEl.createDiv({ cls: "tm-note-panel-body" });
+    this.bodyEl = this.el.createDiv({ cls: "tm-note-panel-body" });
     this.bodyEl.style.display = this.expanded ? "block" : "none";
     this.contentEl = this.bodyEl.createDiv({ cls: "tm-note-panel-content" });
   }
   async update(phaseId, phases) {
     const settings = this.getSettings();
     if (!settings.ui.notePanel.enabled) {
-      this.containerEl.style.display = "none";
+      this.el.style.display = "none";
       return;
     }
     const phase = phases.find((p) => p.id === phaseId);
     if (!(phase == null ? void 0 : phase.noteFilePath)) {
-      this.containerEl.style.display = "none";
+      this.el.style.display = "none";
       return;
     }
     const file = this.app.vault.getAbstractFileByPath(phase.noteFilePath);
     if (!(file instanceof import_obsidian3.TFile)) {
-      this.containerEl.style.display = "none";
+      this.el.style.display = "none";
       return;
     }
     const rawContent = await this.app.vault.cachedRead(file);
     const markdown = extractNoteContent(rawContent, settings.ui.notePanel.headings);
     if (!markdown.trim()) {
-      this.containerEl.style.display = "none";
+      this.el.style.display = "none";
       return;
     }
     this.fileNameEl.textContent = file.basename;
@@ -830,14 +863,14 @@ var PhaseNotePanel = class {
       file.path,
       this.renderComponent
     );
-    this.containerEl.style.display = "block";
+    this.el.style.display = "block";
   }
   hide() {
-    this.containerEl.style.display = "none";
+    this.el.style.display = "none";
   }
   destroy() {
     this.renderComponent.unload();
-    this.containerEl.remove();
+    this.el.remove();
   }
 };
 
@@ -1113,19 +1146,39 @@ var QuadrantGrid = class {
 // src/ui/components/CreatePhaseModal.ts
 var import_obsidian4 = require("obsidian");
 var CreatePhaseModal = class extends import_obsidian4.Modal {
-  constructor(app, existingPhases, onSubmit, targetFileName) {
+  constructor(app, existingPhases, onSubmit, targetFileName, prefill) {
     super(app);
     this.existingPhases = existingPhases;
     this.onSubmit = onSubmit;
     this.targetFileName = targetFileName;
+    this.prefill = prefill;
     this.phaseId = "";
     this.phaseLabel = "";
+    this.phaseStart = "";
+    this.phaseEnd = "";
     this.selectedExistingPhaseId = "";
     this.mode = "select";
   }
   onOpen() {
+    var _a, _b, _c, _d;
     const { contentEl } = this;
     contentEl.empty();
+    if (this.prefill) {
+      this.mode = "complete";
+      this.phaseId = (_a = this.prefill.phaseId) != null ? _a : "";
+      this.phaseLabel = (_b = this.prefill.phaseLabel) != null ? _b : "";
+      this.phaseStart = (_c = this.prefill.phaseStart) != null ? _c : "";
+      this.phaseEnd = (_d = this.prefill.phaseEnd) != null ? _d : "";
+      contentEl.createEl("h3", { text: "\u8865\u5168\u9636\u6BB5\u5C5E\u6027" });
+      if (this.targetFileName) {
+        contentEl.createEl("p", {
+          text: `\u76EE\u6807\u7B14\u8BB0: ${this.targetFileName}`,
+          cls: "setting-item-description"
+        });
+      }
+      this.renderCompleteForm(contentEl);
+      return;
+    }
     contentEl.createEl("h3", { text: "\u6DFB\u52A0\u9636\u6BB5\u5C5E\u6027" });
     if (this.targetFileName) {
       contentEl.createEl("p", {
@@ -1138,6 +1191,9 @@ var CreatePhaseModal = class extends import_obsidian4.Modal {
     } else {
       this.mode = "create";
       this.renderCreateForm(contentEl);
+      new import_obsidian4.Setting(contentEl).addButton(
+        (btn) => btn.setButtonText("\u521B\u5EFA").setCta().onClick(() => this.handleSubmit())
+      );
     }
   }
   renderModeSelector(containerEl) {
@@ -1194,6 +1250,66 @@ var CreatePhaseModal = class extends import_obsidian4.Modal {
         this.phaseLabel = v.trim();
       })
     );
+    new import_obsidian4.Setting(containerEl).setName("\u5F00\u59CB\u65E5\u671F").setDesc("\u683C\u5F0F: YYYY-MM-DD\uFF0C\u53EF\u7559\u7A7A").addText(
+      (text) => text.setPlaceholder("2025-01-01").onChange((v) => {
+        this.phaseStart = v.trim();
+      })
+    );
+    new import_obsidian4.Setting(containerEl).setName("\u7ED3\u675F\u65E5\u671F").setDesc("\u683C\u5F0F: YYYY-MM-DD\uFF0C\u53EF\u7559\u7A7A").addText(
+      (text) => text.setPlaceholder("2025-06-30").onChange((v) => {
+        this.phaseEnd = v.trim();
+      })
+    );
+  }
+  renderCompleteForm(containerEl) {
+    var _a, _b, _c, _d;
+    const hasMissingId = !((_a = this.prefill) == null ? void 0 : _a.phaseId);
+    const hasMissingLabel = !((_b = this.prefill) == null ? void 0 : _b.phaseLabel);
+    const hasMissingStart = !((_c = this.prefill) == null ? void 0 : _c.phaseStart);
+    const hasMissingEnd = !((_d = this.prefill) == null ? void 0 : _d.phaseEnd);
+    containerEl.createEl("p", {
+      text: "\u8BE5\u7B14\u8BB0\u5DF2\u6807\u8BB0\u4E3A\u9636\u6BB5\u7B14\u8BB0\uFF0C\u4F46\u7F3A\u5C11\u90E8\u5206\u5C5E\u6027\u3002\u8BF7\u8865\u5168\u4EE5\u4E0B\u4FE1\u606F:",
+      cls: "setting-item-description"
+    });
+    if (hasMissingId) {
+      new import_obsidian4.Setting(containerEl).setName("\u9636\u6BB5 ID").setDesc("\u5B57\u6BCD\u5F00\u5934\uFF0C\u652F\u6301\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF").addText(
+        (text) => text.setPlaceholder("mvp").setValue(this.phaseId).onChange((v) => {
+          this.phaseId = v.trim();
+        })
+      );
+    } else {
+      new import_obsidian4.Setting(containerEl).setName("\u9636\u6BB5 ID").setDesc(this.phaseId);
+    }
+    if (hasMissingLabel) {
+      new import_obsidian4.Setting(containerEl).setName("\u663E\u793A\u540D\u79F0").addText(
+        (text) => text.setPlaceholder("MVP\u9636\u6BB5").setValue(this.phaseLabel).onChange((v) => {
+          this.phaseLabel = v.trim();
+        })
+      );
+    } else {
+      new import_obsidian4.Setting(containerEl).setName("\u663E\u793A\u540D\u79F0").setDesc(this.phaseLabel);
+    }
+    if (hasMissingStart) {
+      new import_obsidian4.Setting(containerEl).setName("\u5F00\u59CB\u65E5\u671F").setDesc("\u683C\u5F0F: YYYY-MM-DD\uFF0C\u53EF\u7559\u7A7A").addText(
+        (text) => text.setPlaceholder("2025-01-01").setValue(this.phaseStart).onChange((v) => {
+          this.phaseStart = v.trim();
+        })
+      );
+    } else {
+      new import_obsidian4.Setting(containerEl).setName("\u5F00\u59CB\u65E5\u671F").setDesc(this.phaseStart);
+    }
+    if (hasMissingEnd) {
+      new import_obsidian4.Setting(containerEl).setName("\u7ED3\u675F\u65E5\u671F").setDesc("\u683C\u5F0F: YYYY-MM-DD\uFF0C\u53EF\u7559\u7A7A").addText(
+        (text) => text.setPlaceholder("2025-06-30").setValue(this.phaseEnd).onChange((v) => {
+          this.phaseEnd = v.trim();
+        })
+      );
+    } else {
+      new import_obsidian4.Setting(containerEl).setName("\u7ED3\u675F\u65E5\u671F").setDesc(this.phaseEnd);
+    }
+    new import_obsidian4.Setting(containerEl).addButton(
+      (btn) => btn.setButtonText("\u8865\u5168\u5C5E\u6027").setCta().onClick(() => this.handleSubmit())
+    );
   }
   handleSubmit() {
     if (this.mode === "select") {
@@ -1203,15 +1319,42 @@ var CreatePhaseModal = class extends import_obsidian4.Modal {
       }
       const selectedPhase = this.existingPhases.find((p) => p.id === this.selectedExistingPhaseId);
       if (selectedPhase) {
-        this.onSubmit(selectedPhase.id, selectedPhase.label);
+        this.onSubmit(selectedPhase.id, selectedPhase.label, "", "");
         this.close();
       }
-    } else {
+    } else if (this.mode === "create") {
       if (!this.phaseId || !this.phaseLabel) {
         new import_obsidian4.Notice("\u8BF7\u8F93\u5165\u9636\u6BB5 ID \u548C\u663E\u793A\u540D\u79F0");
         return;
       }
-      this.onSubmit(this.phaseId, this.phaseLabel);
+      if (this.phaseStart && !/^\d{4}-\d{2}-\d{2}$/.test(this.phaseStart)) {
+        new import_obsidian4.Notice("\u5F00\u59CB\u65E5\u671F\u683C\u5F0F\u65E0\u6548\uFF0C\u8BF7\u4F7F\u7528 YYYY-MM-DD \u683C\u5F0F");
+        return;
+      }
+      if (this.phaseEnd && !/^\d{4}-\d{2}-\d{2}$/.test(this.phaseEnd)) {
+        new import_obsidian4.Notice("\u7ED3\u675F\u65E5\u671F\u683C\u5F0F\u65E0\u6548\uFF0C\u8BF7\u4F7F\u7528 YYYY-MM-DD \u683C\u5F0F");
+        return;
+      }
+      this.onSubmit(this.phaseId, this.phaseLabel, this.phaseStart, this.phaseEnd);
+      this.close();
+    } else {
+      if (!this.phaseId) {
+        new import_obsidian4.Notice("\u8BF7\u8F93\u5165\u9636\u6BB5 ID");
+        return;
+      }
+      if (!this.phaseLabel) {
+        new import_obsidian4.Notice("\u8BF7\u8F93\u5165\u663E\u793A\u540D\u79F0");
+        return;
+      }
+      if (this.phaseStart && !/^\d{4}-\d{2}-\d{2}$/.test(this.phaseStart)) {
+        new import_obsidian4.Notice("\u5F00\u59CB\u65E5\u671F\u683C\u5F0F\u65E0\u6548\uFF0C\u8BF7\u4F7F\u7528 YYYY-MM-DD \u683C\u5F0F");
+        return;
+      }
+      if (this.phaseEnd && !/^\d{4}-\d{2}-\d{2}$/.test(this.phaseEnd)) {
+        new import_obsidian4.Notice("\u7ED3\u675F\u65E5\u671F\u683C\u5F0F\u65E0\u6548\uFF0C\u8BF7\u4F7F\u7528 YYYY-MM-DD \u683C\u5F0F");
+        return;
+      }
+      this.onSubmit(this.phaseId, this.phaseLabel, this.phaseStart, this.phaseEnd);
       this.close();
     }
   }
@@ -1220,9 +1363,208 @@ var CreatePhaseModal = class extends import_obsidian4.Modal {
   }
 };
 
+// src/ui/components/TimelineOverview.ts
+var TIMELINE_COLORS = [
+  "#3498db",
+  "#e74c3c",
+  "#2ecc71",
+  "#f39c12",
+  "#9b59b6",
+  "#1abc9c",
+  "#e67e22",
+  "#34495e"
+];
+var TimelineOverview = class {
+  constructor(container, getSettings, eventBus) {
+    this.getSettings = getSettings;
+    this.eventBus = eventBus;
+    this.headerRangeEl = null;
+    this.bodyEl = null;
+    this.el = container.createDiv({ cls: "tm-timeline-container" });
+    this.el.style.display = "none";
+  }
+  show() {
+    this.el.style.display = "flex";
+  }
+  hide() {
+    this.el.style.display = "none";
+  }
+  render(phases) {
+    this.el.empty();
+    const header = this.el.createDiv({ cls: "tm-timeline-header" });
+    header.createSpan({ cls: "tm-timeline-title", text: "\u9879\u76EE\u65F6\u95F4\u8F74" });
+    this.headerRangeEl = header.createSpan({ cls: "tm-timeline-range" });
+    this.bodyEl = this.el.createDiv({ cls: "tm-timeline-body" });
+    const validPhases = phases.filter((p) => p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end)).sort((a, b) => a.order - b.order);
+    if (validPhases.length === 0) {
+      this.renderEmpty();
+      return;
+    }
+    let projectStart = null;
+    let projectEnd = null;
+    for (const p of validPhases) {
+      const s = this.parseDate(p.timePeriod.start);
+      const e = this.parseDate(p.timePeriod.end);
+      if (!projectStart || s < projectStart)
+        projectStart = s;
+      if (!projectEnd || e > projectEnd)
+        projectEnd = e;
+    }
+    if (!projectStart || !projectEnd) {
+      this.renderEmpty();
+      return;
+    }
+    const totalDays = this.daysBetween(projectStart, projectEnd);
+    if (totalDays <= 0) {
+      this.headerRangeEl.textContent = this.formatDate(projectStart);
+    } else {
+      this.headerRangeEl.textContent = `${this.formatDate(projectStart)} \u2014 ${this.formatDate(projectEnd)}`;
+    }
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayPct = totalDays > 0 ? this.daysBetween(projectStart, today) / totalDays * 100 : -1;
+    const rows = this.bodyEl.createDiv({ cls: "tm-timeline-rows" });
+    for (let i = 0; i < validPhases.length; i++) {
+      const phase = validPhases[i];
+      const phaseStart = this.parseDate(phase.timePeriod.start);
+      const phaseEnd = this.parseDate(phase.timePeriod.end);
+      const color = TIMELINE_COLORS[i % TIMELINE_COLORS.length];
+      const leftPct = totalDays > 0 ? this.daysBetween(projectStart, phaseStart) / totalDays * 100 : 0;
+      const widthPct = totalDays > 0 ? this.daysBetween(phaseStart, phaseEnd) / totalDays * 100 : 100;
+      const row = rows.createDiv({ cls: "tm-timeline-row" });
+      const label = row.createSpan({ cls: "tm-timeline-row-label", text: phase.label });
+      label.title = phase.label;
+      row.createSpan({ cls: "tm-timeline-row-date", text: phase.timePeriod.start });
+      const track = row.createDiv({ cls: "tm-timeline-row-track" });
+      const bar = track.createDiv({ cls: "tm-timeline-row-bar" });
+      bar.style.left = `${Math.max(0, leftPct)}%`;
+      bar.style.width = `${Math.max(0.5, widthPct)}%`;
+      bar.style.background = color;
+      if (todayPct >= 0 && todayPct <= 100) {
+        const cursor = track.createDiv({ cls: "tm-timeline-today-cursor" });
+        cursor.style.left = `${todayPct}%`;
+        if (i === 0) {
+          const cursorLabel = cursor.createDiv({ cls: "tm-timeline-today-cursor-label" });
+          cursorLabel.textContent = "\u4ECA\u5929";
+        }
+      }
+      row.createSpan({ cls: "tm-timeline-row-date", text: phase.timePeriod.end });
+      row.addEventListener("click", () => {
+        this.eventBus.emit("timeline-toggled", { active: false });
+        this.eventBus.emit("view-switched", { viewId: phase.id, viewType: "phase" });
+      });
+    }
+  }
+  destroy() {
+    this.el.remove();
+  }
+  renderEmpty() {
+    if (!this.bodyEl)
+      return;
+    this.headerRangeEl.textContent = "";
+    const empty = this.bodyEl.createDiv({ cls: "tm-timeline-empty" });
+    empty.textContent = "\u6682\u65E0\u9636\u6BB5\u914D\u7F6E\u4E86\u65F6\u95F4\u8303\u56F4\u3002\u8BF7\u5728\u9636\u6BB5\u7B14\u8BB0\u7684 frontmatter \u4E2D\u6DFB\u52A0 phase-start \u548C phase-end \u5C5E\u6027\u3002";
+  }
+  parseDate(str) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(str))
+      return null;
+    const [y, m, d] = str.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+    if (isNaN(date.getTime()))
+      return null;
+    return date;
+  }
+  daysBetween(a, b) {
+    return Math.round((b.getTime() - a.getTime()) / (1e3 * 60 * 60 * 24));
+  }
+  formatDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+};
+
+// src/ui/components/InlineTimeline.ts
+var TIMELINE_COLORS2 = [
+  "#3498db",
+  "#e74c3c",
+  "#2ecc71",
+  "#f39c12",
+  "#9b59b6",
+  "#1abc9c",
+  "#e67e22",
+  "#34495e"
+];
+var InlineTimeline = class {
+  constructor(container, getSettings, eventBus) {
+    this.getSettings = getSettings;
+    this.eventBus = eventBus;
+    this.el = container.createDiv({ cls: "tm-inline-timeline" });
+    this.el.style.display = "none";
+  }
+  show() {
+    this.el.style.display = "flex";
+  }
+  hide() {
+    this.el.style.display = "none";
+  }
+  render(currentPhaseId) {
+    this.el.empty();
+    const phases = this.getSettings().phases;
+    const phase = phases.find((p) => p.id === currentPhaseId);
+    if (!phase || !phase.timePeriod) {
+      this.el.style.display = "none";
+      return;
+    }
+    const start = this.parseDate(phase.timePeriod.start);
+    const end = this.parseDate(phase.timePeriod.end);
+    if (!start || !end) {
+      this.el.style.display = "none";
+      return;
+    }
+    this.el.style.display = "flex";
+    const totalDays = this.daysBetween(start, end);
+    const sortedPhases = [...phases].filter((p) => p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end)).sort((a, b) => a.order - b.order);
+    const colorIndex = sortedPhases.findIndex((p) => p.id === currentPhaseId);
+    const color = TIMELINE_COLORS2[(colorIndex >= 0 ? colorIndex : 0) % TIMELINE_COLORS2.length];
+    this.el.createSpan({ cls: "tm-inline-timeline-date", text: phase.timePeriod.start });
+    const track = this.el.createDiv({ cls: "tm-inline-timeline-track" });
+    const bar = track.createDiv({ cls: "tm-inline-timeline-bar" });
+    bar.style.background = color;
+    if (totalDays > 0) {
+      const today = /* @__PURE__ */ new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayPct = this.daysBetween(start, today) / totalDays * 100;
+      if (todayPct >= 0 && todayPct <= 100) {
+        const cursor = track.createDiv({ cls: "tm-inline-timeline-cursor" });
+        cursor.style.left = `${todayPct}%`;
+        const cursorLabel = cursor.createDiv({ cls: "tm-inline-timeline-cursor-label" });
+        cursorLabel.textContent = "\u4ECA\u5929";
+      }
+    }
+    this.el.createSpan({ cls: "tm-inline-timeline-date", text: phase.timePeriod.end });
+  }
+  destroy() {
+    this.el.remove();
+  }
+  parseDate(str) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(str))
+      return null;
+    const [y, m, d] = str.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+    if (isNaN(date.getTime()))
+      return null;
+    return date;
+  }
+  daysBetween(a, b) {
+    return Math.round((b.getTime() - a.getTime()) / (1e3 * 60 * 60 * 24));
+  }
+};
+
 // src/ui/MatrixView.ts
 var MatrixView = class extends import_obsidian5.ItemView {
-  constructor(leaf, eventBus, taskScanner, tagManager, viewRegistry, getSettings, onAddPhaseToNote) {
+  constructor(leaf, eventBus, taskScanner, tagManager, viewRegistry, getSettings, onAddPhaseToNote, onCompletePhaseNote) {
     super(leaf);
     this.eventBus = eventBus;
     this.taskScanner = taskScanner;
@@ -1230,10 +1572,14 @@ var MatrixView = class extends import_obsidian5.ItemView {
     this.viewRegistry = viewRegistry;
     this.getSettings = getSettings;
     this.onAddPhaseToNote = onAddPhaseToNote;
+    this.onCompletePhaseNote = onCompletePhaseNote;
     this.currentViewId = "";
+    this.timelineActive = false;
     this.navigator = null;
     this.phaseNotePanel = null;
     this.quadrantGrid = null;
+    this.timelineOverview = null;
+    this.inlineTimeline = null;
     // Refresh/progress elements (hosted inside navigator)
     this.refreshBtn = null;
     this.progressWrapEl = null;
@@ -1256,6 +1602,7 @@ var MatrixView = class extends import_obsidian5.ItemView {
     this.onTaskToggled = () => this.refresh();
     this.onViewSwitched = (p) => this.switchView(p.viewId);
     this.onSettingsChanged = () => this.rebuildUI();
+    this.onTimelineToggled = (p) => this.toggleTimeline(p.active);
   }
   getViewType() {
     return VIEW_TYPE_MATRIX;
@@ -1274,6 +1621,7 @@ var MatrixView = class extends import_obsidian5.ItemView {
     this.eventBus.on("task-toggled", this.onTaskToggled);
     this.eventBus.on("view-switched", this.onViewSwitched);
     this.eventBus.on("settings-changed", this.onSettingsChanged);
+    this.eventBus.on("timeline-toggled", this.onTimelineToggled);
     this.buildUI();
     const phases = this.viewRegistry.getPhaseViews();
     if (phases.length > 0) {
@@ -1281,8 +1629,10 @@ var MatrixView = class extends import_obsidian5.ItemView {
     }
   }
   async onClose() {
-    var _a;
+    var _a, _b, _c;
     (_a = this.phaseNotePanel) == null ? void 0 : _a.destroy();
+    (_b = this.timelineOverview) == null ? void 0 : _b.destroy();
+    (_c = this.inlineTimeline) == null ? void 0 : _c.destroy();
     this.eventBus.off("scan-complete", this.onScanComplete);
     this.eventBus.off("scan-progress", this.onScanProgress);
     this.eventBus.off("tasks-changed", this.onTasksChanged);
@@ -1290,6 +1640,7 @@ var MatrixView = class extends import_obsidian5.ItemView {
     this.eventBus.off("task-toggled", this.onTaskToggled);
     this.eventBus.off("view-switched", this.onViewSwitched);
     this.eventBus.off("settings-changed", this.onSettingsChanged);
+    this.eventBus.off("timeline-toggled", this.onTimelineToggled);
   }
   buildUI() {
     const { contentEl } = this;
@@ -1301,7 +1652,6 @@ var MatrixView = class extends import_obsidian5.ItemView {
       this.viewRegistry,
       this.eventBus,
       this.onAddPhaseToNote ? () => {
-        var _a, _b;
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
           new import_obsidian5.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A\u7B14\u8BB0");
@@ -1312,13 +1662,41 @@ var MatrixView = class extends import_obsidian5.ItemView {
           return;
         }
         const cache = this.app.metadataCache.getFileCache(activeFile);
-        if (((_a = cache == null ? void 0 : cache.frontmatter) == null ? void 0 : _a["phase"]) === true || ((_b = cache == null ? void 0 : cache.frontmatter) == null ? void 0 : _b["phase"]) === "true") {
-          new import_obsidian5.Notice(`\u8BE5\u7B14\u8BB0\u5DF2\u7ECF\u662F\u9636\u6BB5\u7B14\u8BB0 (${activeFile.basename})`);
+        const fm = cache == null ? void 0 : cache.frontmatter;
+        const isPhaseNote = (fm == null ? void 0 : fm["phase"]) === true || (fm == null ? void 0 : fm["phase"]) === "true";
+        if (isPhaseNote) {
+          const existingId = typeof (fm == null ? void 0 : fm["phase-id"]) === "string" ? fm["phase-id"].trim() : "";
+          const existingLabel = typeof (fm == null ? void 0 : fm["phase-label"]) === "string" ? fm["phase-label"].trim() : "";
+          const existingStart = typeof (fm == null ? void 0 : fm["phase-start"]) === "string" ? fm["phase-start"].trim() : "";
+          const existingEnd = typeof (fm == null ? void 0 : fm["phase-end"]) === "string" ? fm["phase-end"].trim() : "";
+          const hasAllRequired = existingId && existingLabel;
+          const hasAllDates = existingStart && existingEnd;
+          if (hasAllRequired && hasAllDates) {
+            new import_obsidian5.Notice(`\u8BE5\u7B14\u8BB0\u5DF2\u7ECF\u662F\u5B8C\u6574\u7684\u9636\u6BB5\u7B14\u8BB0 (${activeFile.basename})`);
+            return;
+          }
+          const capturedFile2 = activeFile;
+          const prefill = {
+            phaseId: existingId || void 0,
+            phaseLabel: existingLabel || void 0,
+            phaseStart: existingStart || void 0,
+            phaseEnd: existingEnd || void 0
+          };
+          new CreatePhaseModal(
+            this.app,
+            this.getSettings().phases,
+            (id, label, start, end) => {
+              var _a;
+              (_a = this.onCompletePhaseNote) == null ? void 0 : _a.call(this, capturedFile2, id, label, start, end);
+            },
+            capturedFile2.basename,
+            prefill
+          ).open();
           return;
         }
         const capturedFile = activeFile;
-        new CreatePhaseModal(this.app, this.getSettings().phases, (id, label) => {
-          this.onAddPhaseToNote(capturedFile, id, label);
+        new CreatePhaseModal(this.app, this.getSettings().phases, (id, label, start, end) => {
+          this.onAddPhaseToNote(capturedFile, id, label, start, end);
         }, capturedFile.basename).open();
       } : void 0,
       () => this.refresh()
@@ -1338,6 +1716,7 @@ var MatrixView = class extends import_obsidian5.ItemView {
     const progressBarEl = this.progressWrapEl.createDiv({ cls: "tm-progress-bar" });
     this.progressFillEl = progressBarEl.createDiv({ cls: "tm-progress-fill" });
     this.progressTextEl = this.progressWrapEl.createDiv({ cls: "tm-progress-text" });
+    this.inlineTimeline = new InlineTimeline(contentEl, this.getSettings, this.eventBus);
     this.phaseNotePanel = new PhaseNotePanel(contentEl, this.app, this.getSettings);
     this.quadrantGrid = new QuadrantGrid(
       contentEl,
@@ -1347,23 +1726,76 @@ var MatrixView = class extends import_obsidian5.ItemView {
       this.dragDropManager,
       settings
     );
+    this.timelineOverview = new TimelineOverview(contentEl, this.getSettings, this.eventBus);
   }
   rebuildUI() {
-    var _a;
+    var _a, _b, _c;
     (_a = this.phaseNotePanel) == null ? void 0 : _a.destroy();
+    (_b = this.timelineOverview) == null ? void 0 : _b.destroy();
+    (_c = this.inlineTimeline) == null ? void 0 : _c.destroy();
     this.buildUI();
-    this.switchView(this.currentViewId);
+    if (this.timelineActive) {
+      this.toggleTimeline(true);
+    } else {
+      this.switchView(this.currentViewId);
+    }
   }
   switchView(viewId) {
-    var _a;
+    var _a, _b, _c, _d, _e, _f;
     this.currentViewId = viewId;
     (_a = this.navigator) == null ? void 0 : _a.updatePhaseView(viewId);
+    if (this.timelineActive) {
+      this.timelineActive = false;
+      (_b = this.navigator) == null ? void 0 : _b.setTimelineActive(false);
+      if ((_c = this.inlineTimeline) == null ? void 0 : _c.el)
+        this.inlineTimeline.el.style.display = "";
+      if ((_d = this.phaseNotePanel) == null ? void 0 : _d.el)
+        this.phaseNotePanel.el.style.display = "";
+      if ((_e = this.quadrantGrid) == null ? void 0 : _e.el)
+        this.quadrantGrid.el.style.display = "";
+      const unassignedEl = this.contentEl.querySelector(".tm-unassigned-tray");
+      if (unassignedEl)
+        unassignedEl.style.display = "";
+      (_f = this.timelineOverview) == null ? void 0 : _f.hide();
+    }
     this.refresh();
   }
+  toggleTimeline(active) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    this.timelineActive = active;
+    const unassignedEl = this.contentEl.querySelector(".tm-unassigned-tray");
+    if (active) {
+      if ((_a = this.inlineTimeline) == null ? void 0 : _a.el)
+        this.inlineTimeline.el.style.display = "none";
+      if ((_b = this.phaseNotePanel) == null ? void 0 : _b.el)
+        this.phaseNotePanel.el.style.display = "none";
+      if ((_c = this.quadrantGrid) == null ? void 0 : _c.el)
+        this.quadrantGrid.el.style.display = "none";
+      if (unassignedEl)
+        unassignedEl.style.display = "none";
+      (_d = this.timelineOverview) == null ? void 0 : _d.show();
+      (_e = this.timelineOverview) == null ? void 0 : _e.render(this.getSettings().phases);
+    } else {
+      (_f = this.timelineOverview) == null ? void 0 : _f.hide();
+      if ((_g = this.inlineTimeline) == null ? void 0 : _g.el)
+        this.inlineTimeline.el.style.display = "";
+      if ((_h = this.phaseNotePanel) == null ? void 0 : _h.el)
+        this.phaseNotePanel.el.style.display = "";
+      if ((_i = this.quadrantGrid) == null ? void 0 : _i.el)
+        this.quadrantGrid.el.style.display = "";
+      if (unassignedEl)
+        unassignedEl.style.display = "";
+      this.refresh();
+    }
+  }
   async refresh() {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     if (!this.currentViewId)
       return;
+    if (this.timelineActive) {
+      (_a = this.timelineOverview) == null ? void 0 : _a.render(this.getSettings().phases);
+      return;
+    }
     const settings = this.getSettings();
     const noteToPhase = /* @__PURE__ */ new Map();
     for (const phase of settings.phases) {
@@ -1379,11 +1811,12 @@ var MatrixView = class extends import_obsidian5.ItemView {
         return true;
       return false;
     });
-    if ((_a = this.navigator) == null ? void 0 : _a.isHideCompleted()) {
+    if ((_b = this.navigator) == null ? void 0 : _b.isHideCompleted()) {
       gridTasks = gridTasks.filter((t) => !t.completed);
     }
-    (_b = this.quadrantGrid) == null ? void 0 : _b.render(this.currentViewId, gridTasks);
-    await ((_c = this.phaseNotePanel) == null ? void 0 : _c.update(this.currentViewId, settings.phases));
+    (_c = this.quadrantGrid) == null ? void 0 : _c.render(this.currentViewId, gridTasks);
+    (_d = this.inlineTimeline) == null ? void 0 : _d.render(this.currentViewId);
+    await ((_e = this.phaseNotePanel) == null ? void 0 : _e.update(this.currentViewId, settings.phases));
   }
   updateProgress(scanned, total) {
     if (!this.progressWrapEl || !this.progressFillEl || !this.progressTextEl)
@@ -1434,8 +1867,8 @@ var SettingsTab = class extends import_obsidian6.PluginSettingTab {
     containerEl.createEl("h2", { text: "\u9636\u6BB5\u7BA1\u7406" });
     new import_obsidian6.Setting(containerEl).setName("\u4E00\u952E\u521B\u5EFA\u9636\u6BB5\u7B14\u8BB0").setDesc("\u521B\u5EFA\u5E26\u6709\u6B63\u786E frontmatter \u7684\u9636\u6BB5\u89C4\u5212\u7B14\u8BB0").addButton(
       (btn) => btn.setButtonText("\u65B0\u5EFA\u9636\u6BB5\u7B14\u8BB0").setCta().onClick(() => {
-        new CreatePhaseModal(this.app, [], async (id, label) => {
-          await this.plugin.createPhaseNote(id, label);
+        new CreatePhaseModal(this.app, [], async (id, label, start, end) => {
+          await this.plugin.createPhaseNote(id, label, start, end);
           this.display();
         }).open();
       })
@@ -1575,7 +2008,8 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
         this.tagManager,
         this.viewRegistry,
         () => this.settings,
-        (file, id, label) => this.addPhaseToActiveNote(file, id, label)
+        (file, id, label, start, end) => this.addPhaseToActiveNote(file, id, label, start, end),
+        (file, id, label, start, end) => this.completePhaseAttributes(file, id, label, start, end)
       )
     );
     this.addRibbonIcon("layout-grid", "Task Maker Matrix", () => {
@@ -1689,6 +2123,19 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
           if (!updated.includes(phaseId))
             updated.push(phaseId);
         }
+        const newTp = info.timePeriod;
+        const oldTp = existing.timePeriod;
+        if (newTp && (!oldTp || oldTp.start !== newTp.start || oldTp.end !== newTp.end)) {
+          existing.timePeriod = newTp;
+          changed = true;
+          if (!updated.includes(phaseId))
+            updated.push(phaseId);
+        } else if (!newTp && oldTp && existing.autoDetected) {
+          existing.timePeriod = void 0;
+          changed = true;
+          if (!updated.includes(phaseId))
+            updated.push(phaseId);
+        }
       } else {
         const validation = this.viewRegistry.isValidPhaseId(phaseId);
         if (!validation.valid) {
@@ -1700,6 +2147,7 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
           label: info.phaseLabel,
           order: settings.phases.length,
           noteFilePath: info.filePath,
+          timePeriod: info.timePeriod,
           autoDetected: true
         });
         changed = true;
@@ -1720,7 +2168,7 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
       this.eventBus.emit("phases-synced", { added, updated, removed });
     }
   }
-  async createPhaseNote(phaseId, phaseLabel) {
+  async createPhaseNote(phaseId, phaseLabel, phaseStart = "", phaseEnd = "") {
     const validation = this.viewRegistry.isValidPhaseId(phaseId);
     if (!validation.valid) {
       new import_obsidian7.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
@@ -1736,6 +2184,8 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
       "phase: true",
       `phase-id: ${phaseId}`,
       `phase-label: ${phaseLabel}`,
+      `phase-start: ${phaseStart}`,
+      `phase-end: ${phaseEnd}`,
       "---",
       "",
       `# ${phaseLabel}`,
@@ -1755,7 +2205,7 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
       new import_obsidian7.Notice(`\u521B\u5EFA\u5931\u8D25: ${e.message}`);
     }
   }
-  async addPhaseToActiveNote(file, phaseId, phaseLabel) {
+  async addPhaseToActiveNote(file, phaseId, phaseLabel, phaseStart = "", phaseEnd = "") {
     const validation = this.viewRegistry.isValidPhaseId(phaseId);
     if (!validation.valid) {
       new import_obsidian7.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
@@ -1770,6 +2220,8 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
         fm.phase = true;
         fm["phase-id"] = phaseId;
         fm["phase-label"] = phaseLabel;
+        fm["phase-start"] = phaseStart;
+        fm["phase-end"] = phaseEnd;
       });
       new import_obsidian7.Notice(`\u5DF2\u5C06\u9636\u6BB5\u5C5E\u6027\u6DFB\u52A0\u5230: ${file.basename}`);
       await this.waitForMetadataCache(file.path);
@@ -1777,6 +2229,29 @@ var TaskMakerPlugin = class extends import_obsidian7.Plugin {
       await this.reconcilePhaseNotes();
     } catch (e) {
       new import_obsidian7.Notice(`\u6DFB\u52A0\u9636\u6BB5\u5C5E\u6027\u5931\u8D25: ${e.message}`);
+    }
+  }
+  async completePhaseAttributes(file, phaseId, phaseLabel, phaseStart = "", phaseEnd = "") {
+    if (!phaseId.trim()) {
+      new import_obsidian7.Notice("\u9636\u6BB5 ID \u4E0D\u80FD\u4E3A\u7A7A");
+      return;
+    }
+    try {
+      await this.app.fileManager.processFrontMatter(file, (fm) => {
+        fm.phase = true;
+        fm["phase-id"] = phaseId;
+        fm["phase-label"] = phaseLabel;
+        if (phaseStart || !fm["phase-start"])
+          fm["phase-start"] = phaseStart;
+        if (phaseEnd || !fm["phase-end"])
+          fm["phase-end"] = phaseEnd;
+      });
+      new import_obsidian7.Notice(`\u5DF2\u8865\u5168\u9636\u6BB5\u5C5E\u6027: ${file.basename}`);
+      await this.waitForMetadataCache(file.path);
+      await this.taskScanner.fullScan();
+      await this.reconcilePhaseNotes();
+    } catch (e) {
+      new import_obsidian7.Notice(`\u8865\u5168\u9636\u6BB5\u5C5E\u6027\u5931\u8D25: ${e.message}`);
     }
   }
   waitForMetadataCache(filePath) {

@@ -9,14 +9,19 @@ import { DragDropManager } from './DragDropManager';
 import { ViewNavigator } from './components/ViewNavigator';
 import { PhaseNotePanel } from './components/PhaseNotePanel';
 import { QuadrantGrid } from './components/QuadrantGrid';
-import { CreatePhaseModal } from './components/CreatePhaseModal';
+import { CreatePhaseModal, PhasePrefill } from './components/CreatePhaseModal';
+import { TimelineOverview } from './components/TimelineOverview';
+import { InlineTimeline } from './components/InlineTimeline';
 
 export class MatrixView extends ItemView {
 	private currentViewId: string = '';
+	private timelineActive: boolean = false;
 
 	private navigator: ViewNavigator | null = null;
 	private phaseNotePanel: PhaseNotePanel | null = null;
 	private quadrantGrid: QuadrantGrid | null = null;
+	private timelineOverview: TimelineOverview | null = null;
+	private inlineTimeline: InlineTimeline | null = null;
 	private dragDropManager: DragDropManager;
 
 	// Refresh/progress elements (hosted inside navigator)
@@ -33,6 +38,7 @@ export class MatrixView extends ItemView {
 	private onTaskToggled: (p: { taskId: string; completed: boolean }) => void;
 	private onViewSwitched: (p: { viewId: string }) => void;
 	private onSettingsChanged: (p: { settings: PluginSettings }) => void;
+	private onTimelineToggled: (p: { active: boolean }) => void;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -41,7 +47,8 @@ export class MatrixView extends ItemView {
 		private tagManager: TagManagerService,
 		private viewRegistry: ViewRegistryService,
 		private getSettings: () => PluginSettings,
-		private onAddPhaseToNote?: (file: TFile, id: string, label: string) => Promise<void>
+		private onAddPhaseToNote?: (file: TFile, id: string, label: string, start: string, end: string) => Promise<void>,
+		private onCompletePhaseNote?: (file: TFile, id: string, label: string, start: string, end: string) => Promise<void>
 	) {
 		super(leaf);
 
@@ -64,6 +71,7 @@ export class MatrixView extends ItemView {
 		this.onTaskToggled = () => this.refresh();
 		this.onViewSwitched = (p) => this.switchView(p.viewId);
 		this.onSettingsChanged = () => this.rebuildUI();
+		this.onTimelineToggled = (p) => this.toggleTimeline(p.active);
 	}
 
 	getViewType(): string {
@@ -87,6 +95,7 @@ export class MatrixView extends ItemView {
 		this.eventBus.on('task-toggled', this.onTaskToggled);
 		this.eventBus.on('view-switched', this.onViewSwitched);
 		this.eventBus.on('settings-changed', this.onSettingsChanged);
+		this.eventBus.on('timeline-toggled', this.onTimelineToggled);
 
 		this.buildUI();
 
@@ -99,6 +108,8 @@ export class MatrixView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.phaseNotePanel?.destroy();
+		this.timelineOverview?.destroy();
+		this.inlineTimeline?.destroy();
 		this.eventBus.off('scan-complete', this.onScanComplete);
 		this.eventBus.off('scan-progress', this.onScanProgress);
 		this.eventBus.off('tasks-changed', this.onTasksChanged);
@@ -106,6 +117,7 @@ export class MatrixView extends ItemView {
 		this.eventBus.off('task-toggled', this.onTaskToggled);
 		this.eventBus.off('view-switched', this.onViewSwitched);
 		this.eventBus.off('settings-changed', this.onSettingsChanged);
+		this.eventBus.off('timeline-toggled', this.onTimelineToggled);
 	}
 
 	private buildUI(): void {
@@ -132,13 +144,47 @@ export class MatrixView extends ItemView {
 						return;
 					}
 					const cache = this.app.metadataCache.getFileCache(activeFile);
-					if (cache?.frontmatter?.['phase'] === true || cache?.frontmatter?.['phase'] === 'true') {
-						new Notice(`\u8BE5\u7B14\u8BB0\u5DF2\u7ECF\u662F\u9636\u6BB5\u7B14\u8BB0 (${activeFile.basename})`);
+					const fm = cache?.frontmatter;
+					const isPhaseNote = fm?.['phase'] === true || fm?.['phase'] === 'true';
+
+					if (isPhaseNote) {
+						// Check if phase attributes are incomplete
+						const existingId = typeof fm?.['phase-id'] === 'string' ? fm['phase-id'].trim() : '';
+						const existingLabel = typeof fm?.['phase-label'] === 'string' ? fm['phase-label'].trim() : '';
+						const existingStart = typeof fm?.['phase-start'] === 'string' ? fm['phase-start'].trim() : '';
+						const existingEnd = typeof fm?.['phase-end'] === 'string' ? fm['phase-end'].trim() : '';
+
+						const hasAllRequired = existingId && existingLabel;
+						const hasAllDates = existingStart && existingEnd;
+
+						if (hasAllRequired && hasAllDates) {
+							new Notice(`\u8BE5\u7B14\u8BB0\u5DF2\u7ECF\u662F\u5B8C\u6574\u7684\u9636\u6BB5\u7B14\u8BB0 (${activeFile.basename})`);
+							return;
+						}
+
+						// Open completion modal
+						const capturedFile = activeFile;
+						const prefill: PhasePrefill = {
+							phaseId: existingId || undefined,
+							phaseLabel: existingLabel || undefined,
+							phaseStart: existingStart || undefined,
+							phaseEnd: existingEnd || undefined,
+						};
+						new CreatePhaseModal(
+							this.app,
+							this.getSettings().phases,
+							(id, label, start, end) => {
+								this.onCompletePhaseNote?.(capturedFile, id, label, start, end);
+							},
+							capturedFile.basename,
+							prefill
+						).open();
 						return;
 					}
+
 					const capturedFile = activeFile;
-					new CreatePhaseModal(this.app, this.getSettings().phases, (id, label) => {
-						this.onAddPhaseToNote!(capturedFile, id, label);
+					new CreatePhaseModal(this.app, this.getSettings().phases, (id, label, start, end) => {
+						this.onAddPhaseToNote!(capturedFile, id, label, start, end);
 					}, capturedFile.basename).open();
 				}
 				: undefined,
@@ -163,6 +209,9 @@ export class MatrixView extends ItemView {
 		this.progressFillEl = progressBarEl.createDiv({ cls: 'tm-progress-fill' });
 		this.progressTextEl = this.progressWrapEl.createDiv({ cls: 'tm-progress-text' });
 
+		// Inline Timeline (compact single-phase timeline bar)
+		this.inlineTimeline = new InlineTimeline(contentEl, this.getSettings, this.eventBus);
+
 		// Phase Note Panel (between navigator and grid)
 		this.phaseNotePanel = new PhaseNotePanel(contentEl, this.app, this.getSettings);
 
@@ -175,22 +224,72 @@ export class MatrixView extends ItemView {
 			this.dragDropManager,
 			settings
 		);
+
+		// Timeline Overview (initially hidden, toggled via button)
+		this.timelineOverview = new TimelineOverview(contentEl, this.getSettings, this.eventBus);
 	}
 
 	private rebuildUI(): void {
 		this.phaseNotePanel?.destroy();
+		this.timelineOverview?.destroy();
+		this.inlineTimeline?.destroy();
 		this.buildUI();
-		this.switchView(this.currentViewId);
+		if (this.timelineActive) {
+			this.toggleTimeline(true);
+		} else {
+			this.switchView(this.currentViewId);
+		}
 	}
 
 	private switchView(viewId: string): void {
 		this.currentViewId = viewId;
 		this.navigator?.updatePhaseView(viewId);
+		// If switching to a phase from timeline, deactivate timeline
+		if (this.timelineActive) {
+			this.timelineActive = false;
+			this.navigator?.setTimelineActive(false);
+			if (this.inlineTimeline?.el) this.inlineTimeline.el.style.display = '';
+			if (this.phaseNotePanel?.el) this.phaseNotePanel.el.style.display = '';
+			if (this.quadrantGrid?.el) this.quadrantGrid.el.style.display = '';
+			const unassignedEl = this.contentEl.querySelector('.tm-unassigned-tray') as HTMLElement | null;
+			if (unassignedEl) unassignedEl.style.display = '';
+			this.timelineOverview?.hide();
+		}
 		this.refresh();
+	}
+
+	private toggleTimeline(active: boolean): void {
+		this.timelineActive = active;
+		const unassignedEl = this.contentEl.querySelector('.tm-unassigned-tray') as HTMLElement | null;
+		if (active) {
+			// Hide matrix components
+			if (this.inlineTimeline?.el) this.inlineTimeline.el.style.display = 'none';
+			if (this.phaseNotePanel?.el) this.phaseNotePanel.el.style.display = 'none';
+			if (this.quadrantGrid?.el) this.quadrantGrid.el.style.display = 'none';
+			if (unassignedEl) unassignedEl.style.display = 'none';
+			// Show and render timeline
+			this.timelineOverview?.show();
+			this.timelineOverview?.render(this.getSettings().phases);
+		} else {
+			// Hide timeline
+			this.timelineOverview?.hide();
+			// Restore matrix components
+			if (this.inlineTimeline?.el) this.inlineTimeline.el.style.display = '';
+			if (this.phaseNotePanel?.el) this.phaseNotePanel.el.style.display = '';
+			if (this.quadrantGrid?.el) this.quadrantGrid.el.style.display = '';
+			if (unassignedEl) unassignedEl.style.display = '';
+			this.refresh();
+		}
 	}
 
 	private async refresh(): Promise<void> {
 		if (!this.currentViewId) return;
+
+		// If timeline is active, re-render timeline instead
+		if (this.timelineActive) {
+			this.timelineOverview?.render(this.getSettings().phases);
+			return;
+		}
 
 		const settings = this.getSettings();
 
@@ -219,6 +318,9 @@ export class MatrixView extends ItemView {
 
 		// Render quadrant grid with filtered tasks
 		this.quadrantGrid?.render(this.currentViewId, gridTasks);
+
+		// Update inline timeline
+		this.inlineTimeline?.render(this.currentViewId);
 
 		// Update phase note panel
 		await this.phaseNotePanel?.update(this.currentViewId, settings.phases);

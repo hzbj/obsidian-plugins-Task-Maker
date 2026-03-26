@@ -9,9 +9,11 @@ export class ViewNavigator {
 	private scanHostEl: HTMLElement;
 	private filterBtn: HTMLElement;
 	private phaseToggleBtn: HTMLElement;
+	private timelineBtn: HTMLElement;
 
 	private hideCompleted: boolean = false;
 	private phaseCollapsed: boolean = false;
+	private timelineActive: boolean = false;
 
 	constructor(
 		private container: HTMLElement,
@@ -22,7 +24,7 @@ export class ViewNavigator {
 	) {
 		this.el = container.createDiv({ cls: 'tm-nav-bar' });
 
-		// Top row: phase toggle + filter toggle + scan host
+		// Top row: phase toggle + filter toggle + timeline toggle + scan host
 		const topRow = this.el.createDiv({ cls: 'tm-nav-top-row' });
 
 		this.phaseToggleBtn = topRow.createEl('button', {
@@ -47,6 +49,24 @@ export class ViewNavigator {
 			this.filterBtn.classList.toggle('tm-filter-active', this.hideCompleted);
 			this.filterBtn.textContent = this.hideCompleted ? '\u663E\u793A\u5168\u90E8' : '\u9690\u85CF\u5DF2\u5B8C\u6210';
 			this.onToggleFilter?.();
+		});
+
+		// Timeline toggle button
+		this.timelineBtn = topRow.createEl('button', {
+			cls: 'tm-timeline-toggle-btn',
+			attr: { 'aria-label': '\u5207\u6362\u65F6\u95F4\u8F74\u603B\u89C8' },
+		});
+		this.timelineBtn.textContent = '\u65F6\u95F4\u8F74';
+		this.timelineBtn.addEventListener('click', () => {
+			this.timelineActive = !this.timelineActive;
+			this.timelineBtn.classList.toggle('tm-timeline-active', this.timelineActive);
+			// Hide phase controls when timeline is active
+			if (this.timelineActive) {
+				this.phaseControlsEl.style.display = 'none';
+			} else if (!this.phaseCollapsed) {
+				this.phaseControlsEl.style.display = 'flex';
+			}
+			this.eventBus.emit('timeline-toggled', { active: this.timelineActive });
 		});
 
 		// Scan host container (populated by MatrixView)
@@ -80,5 +100,19 @@ export class ViewNavigator {
 
 	isHideCompleted(): boolean {
 		return this.hideCompleted;
+	}
+
+	isTimelineActive(): boolean {
+		return this.timelineActive;
+	}
+
+	setTimelineActive(active: boolean): void {
+		this.timelineActive = active;
+		this.timelineBtn.classList.toggle('tm-timeline-active', active);
+		if (active) {
+			this.phaseControlsEl.style.display = 'none';
+		} else if (!this.phaseCollapsed) {
+			this.phaseControlsEl.style.display = 'flex';
+		}
 	}
 }

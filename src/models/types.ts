@@ -85,6 +85,7 @@ export interface EventMap {
 	'view-switched': { viewId: string; viewType: ViewType };
 	'settings-changed': { settings: PluginSettings };
 	'phases-synced': { added: string[]; updated: string[]; removed: string[] };
+	'timeline-toggled': { active: boolean };
 }
 
 // ============ Phase Detection ============
@@ -93,4 +94,5 @@ export interface DetectedPhaseInfo {
 	phaseId: string;
 	phaseLabel: string;
 	filePath: string;
+	timePeriod?: { start: string; end: string };
 }

@@ -39,7 +39,8 @@ export default class TaskMakerPlugin extends Plugin {
 				this.tagManager,
 				this.viewRegistry,
 				() => this.settings,
-				(file, id, label) => this.addPhaseToActiveNote(file, id, label)
+				(file, id, label, start, end) => this.addPhaseToActiveNote(file, id, label, start, end),
+				(file, id, label, start, end) => this.completePhaseAttributes(file, id, label, start, end)
 			)
 		);
 
@@ -165,6 +166,18 @@ export default class TaskMakerPlugin extends Plugin {
 					changed = true;
 					if (!updated.includes(phaseId)) updated.push(phaseId);
 				}
+				// Sync timePeriod from frontmatter
+				const newTp = info.timePeriod;
+				const oldTp = existing.timePeriod;
+				if (newTp && (!oldTp || oldTp.start !== newTp.start || oldTp.end !== newTp.end)) {
+					existing.timePeriod = newTp;
+					changed = true;
+					if (!updated.includes(phaseId)) updated.push(phaseId);
+				} else if (!newTp && oldTp && existing.autoDetected) {
+					existing.timePeriod = undefined;
+					changed = true;
+					if (!updated.includes(phaseId)) updated.push(phaseId);
+				}
 			} else {
 				const validation = this.viewRegistry.isValidPhaseId(phaseId);
 				if (!validation.valid) {
@@ -176,6 +189,7 @@ export default class TaskMakerPlugin extends Plugin {
 					label: info.phaseLabel,
 					order: settings.phases.length,
 					noteFilePath: info.filePath,
+					timePeriod: info.timePeriod,
 					autoDetected: true,
 				});
 				changed = true;
@@ -198,7 +212,7 @@ export default class TaskMakerPlugin extends Plugin {
 		}
 	}
 
-	async createPhaseNote(phaseId: string, phaseLabel: string): Promise<void> {
+	async createPhaseNote(phaseId: string, phaseLabel: string, phaseStart = '', phaseEnd = ''): Promise<void> {
 		const validation = this.viewRegistry.isValidPhaseId(phaseId);
 		if (!validation.valid) {
 			new Notice(`无效的阶段 ID: ${validation.reason}`);
@@ -217,6 +231,8 @@ export default class TaskMakerPlugin extends Plugin {
 			'phase: true',
 			`phase-id: ${phaseId}`,
 			`phase-label: ${phaseLabel}`,
+			`phase-start: ${phaseStart}`,
+			`phase-end: ${phaseEnd}`,
 			'---',
 			'',
 			`# ${phaseLabel}`,
@@ -242,7 +258,7 @@ export default class TaskMakerPlugin extends Plugin {
 		}
 	}
 
-	async addPhaseToActiveNote(file: TFile, phaseId: string, phaseLabel: string): Promise<void> {
+	async addPhaseToActiveNote(file: TFile, phaseId: string, phaseLabel: string, phaseStart = '', phaseEnd = ''): Promise<void> {
 		const validation = this.viewRegistry.isValidPhaseId(phaseId);
 		if (!validation.valid) {
 			new Notice(`无效的阶段 ID: ${validation.reason}`);
@@ -259,6 +275,8 @@ export default class TaskMakerPlugin extends Plugin {
 				fm.phase = true;
 				fm['phase-id'] = phaseId;
 				fm['phase-label'] = phaseLabel;
+				fm['phase-start'] = phaseStart;
+				fm['phase-end'] = phaseEnd;
 			});
 
 			new Notice(`已将阶段属性添加到: ${file.basename}`);
@@ -268,6 +286,31 @@ export default class TaskMakerPlugin extends Plugin {
 			await this.reconcilePhaseNotes();
 		} catch (e) {
 			new Notice(`添加阶段属性失败: ${(e as Error).message}`);
+		}
+	}
+
+	async completePhaseAttributes(file: TFile, phaseId: string, phaseLabel: string, phaseStart = '', phaseEnd = ''): Promise<void> {
+		if (!phaseId.trim()) {
+			new Notice('阶段 ID 不能为空');
+			return;
+		}
+
+		try {
+			await this.app.fileManager.processFrontMatter(file, (fm) => {
+				fm.phase = true;
+				fm['phase-id'] = phaseId;
+				fm['phase-label'] = phaseLabel;
+				if (phaseStart || !fm['phase-start']) fm['phase-start'] = phaseStart;
+				if (phaseEnd || !fm['phase-end']) fm['phase-end'] = phaseEnd;
+			});
+
+			new Notice(`已补全阶段属性: ${file.basename}`);
+
+			await this.waitForMetadataCache(file.path);
+			await this.taskScanner.fullScan();
+			await this.reconcilePhaseNotes();
+		} catch (e) {
+			new Notice(`补全阶段属性失败: ${(e as Error).message}`);
 		}
 	}
 

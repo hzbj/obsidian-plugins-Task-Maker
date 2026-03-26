@@ -57,8 +57,8 @@ export class SettingsTab extends PluginSettingTab {
 				.setButtonText('新建阶段笔记')
 				.setCta()
 				.onClick(() => {
-					new CreatePhaseModal(this.app, [], async (id, label) => {
-						await this.plugin.createPhaseNote(id, label);
+					new CreatePhaseModal(this.app, [], async (id, label, start, end) => {
+						await this.plugin.createPhaseNote(id, label, start, end);
 						this.display();
 					}).open();
 				})

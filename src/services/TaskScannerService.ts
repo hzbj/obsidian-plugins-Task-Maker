@@ -232,12 +232,22 @@ export class TaskScannerService {
 		const phaseLabel = cache.frontmatter['phase-label'];
 
 		if (typeof phaseId === 'string' && phaseId.trim()) {
+			// Read optional time period from frontmatter
+			const phaseStart = cache.frontmatter['phase-start'];
+			const phaseEnd = cache.frontmatter['phase-end'];
+			const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+			const timePeriod = (typeof phaseStart === 'string' && dateRegex.test(phaseStart)
+				&& typeof phaseEnd === 'string' && dateRegex.test(phaseEnd))
+				? { start: phaseStart, end: phaseEnd }
+				: undefined;
+
 			this.detectedPhases.set(file.path, {
 				phaseId: phaseId.trim(),
 				phaseLabel: typeof phaseLabel === 'string' && phaseLabel.trim()
 					? phaseLabel.trim()
 					: phaseId.trim(),
 				filePath: file.path,
+				timePeriod,
 			});
 		} else {
 			this.detectedPhases.delete(file.path);

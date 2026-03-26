@@ -3,7 +3,7 @@ import { PluginSettings, PhaseDefinition } from '../../models/types';
 import { extractNoteContent } from '../utils/noteContentExtractor';
 
 export class PhaseNotePanel {
-	private containerEl: HTMLElement;
+	el: HTMLElement;
 	private headerEl: HTMLElement;
 	private bodyEl: HTMLElement;
 	private fileNameEl: HTMLElement;
@@ -20,11 +20,11 @@ export class PhaseNotePanel {
 		this.renderComponent = new Component();
 		this.renderComponent.load();
 
-		this.containerEl = parentEl.createDiv({ cls: 'tm-note-panel' });
-		this.containerEl.style.display = 'none';
+		this.el = parentEl.createDiv({ cls: 'tm-note-panel' });
+		this.el.style.display = 'none';
 
 		// Header (click to toggle collapse)
-		this.headerEl = this.containerEl.createDiv({ cls: 'tm-note-panel-header' });
+		this.headerEl = this.el.createDiv({ cls: 'tm-note-panel-header' });
 
 		const toggleEl = this.headerEl.createSpan({ cls: 'tm-note-panel-toggle' });
 		toggleEl.textContent = this.expanded ? '\u25BC' : '\u25B6';
@@ -43,7 +43,7 @@ export class PhaseNotePanel {
 		});
 
 		// Body (collapsible content area)
-		this.bodyEl = this.containerEl.createDiv({ cls: 'tm-note-panel-body' });
+		this.bodyEl = this.el.createDiv({ cls: 'tm-note-panel-body' });
 		this.bodyEl.style.display = this.expanded ? 'block' : 'none';
 
 		this.contentEl = this.bodyEl.createDiv({ cls: 'tm-note-panel-content' });
@@ -53,20 +53,20 @@ export class PhaseNotePanel {
 		const settings = this.getSettings();
 
 		if (!settings.ui.notePanel.enabled) {
-			this.containerEl.style.display = 'none';
+			this.el.style.display = 'none';
 			return;
 		}
 
 		// Find the phase and its note file
 		const phase = phases.find(p => p.id === phaseId);
 		if (!phase?.noteFilePath) {
-			this.containerEl.style.display = 'none';
+			this.el.style.display = 'none';
 			return;
 		}
 
 		const file = this.app.vault.getAbstractFileByPath(phase.noteFilePath);
 		if (!(file instanceof TFile)) {
-			this.containerEl.style.display = 'none';
+			this.el.style.display = 'none';
 			return;
 		}
 
@@ -75,7 +75,7 @@ export class PhaseNotePanel {
 		const markdown = extractNoteContent(rawContent, settings.ui.notePanel.headings);
 
 		if (!markdown.trim()) {
-			this.containerEl.style.display = 'none';
+			this.el.style.display = 'none';
 			return;
 		}
 
@@ -97,15 +97,15 @@ export class PhaseNotePanel {
 			this.renderComponent
 		);
 
-		this.containerEl.style.display = 'block';
+		this.el.style.display = 'block';
 	}
 
 	hide(): void {
-		this.containerEl.style.display = 'none';
+		this.el.style.display = 'none';
 	}
 
 	destroy(): void {
 		this.renderComponent.unload();
-		this.containerEl.remove();
+		this.el.remove();
 	}
 }
