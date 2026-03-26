@@ -113,6 +113,36 @@
 	border-color: var(--interactive-accent);
 }
 
+/* ============ Phase Toggle Button ============ */
+.tm-phase-toggle-btn {
+	padding: 4px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 11px;
+	white-space: nowrap;
+	transition: all 0.15s ease;
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.tm-phase-toggle-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.tm-phase-toggle-btn.tm-phase-collapsed {
+	color: var(--text-faint);
+}
+
+.tm-phase-toggle-icon {
+	font-size: 9px;
+}
+
 /* ============ Phase Controls ============ */
 .tm-phase-controls {
 	display: flex;
@@ -400,7 +430,6 @@
 	margin-bottom: 10px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
-	overflow: hidden;
 	background: var(--background-primary);
 }
 
@@ -449,8 +478,8 @@
 }
 
 .tm-note-panel-body {
-	max-height: 200px;
 	overflow-y: auto;
+	border-top: 1px solid var(--background-modifier-border);
 }
 
 .tm-note-panel-content {

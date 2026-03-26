@@ -655,8 +655,22 @@ var ViewNavigator = class {
     this.onAddPhase = onAddPhase;
     this.onToggleFilter = onToggleFilter;
     this.hideCompleted = false;
+    this.phaseCollapsed = false;
     this.el = container.createDiv({ cls: "tm-nav-bar" });
     const topRow = this.el.createDiv({ cls: "tm-nav-top-row" });
+    this.phaseToggleBtn = topRow.createEl("button", {
+      cls: "tm-phase-toggle-btn",
+      attr: { "aria-label": "\u6298\u53E0/\u5C55\u5F00\u9636\u6BB5\u9009\u62E9\u5668" }
+    });
+    this.phaseToggleBtn.innerHTML = '<span class="tm-phase-toggle-icon">\u25BC</span> \u9636\u6BB5';
+    this.phaseToggleBtn.addEventListener("click", () => {
+      this.phaseCollapsed = !this.phaseCollapsed;
+      this.phaseControlsEl.style.display = this.phaseCollapsed ? "none" : "flex";
+      this.phaseToggleBtn.classList.toggle("tm-phase-collapsed", this.phaseCollapsed);
+      const icon = this.phaseToggleBtn.querySelector(".tm-phase-toggle-icon");
+      if (icon)
+        icon.textContent = this.phaseCollapsed ? "\u25B6" : "\u25BC";
+    });
     this.filterBtn = topRow.createEl("button", {
       cls: "tm-filter-toggle-btn",
       text: "\u9690\u85CF\u5DF2\u5B8C\u6210"
