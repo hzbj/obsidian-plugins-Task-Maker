@@ -395,6 +395,96 @@
 	border-top: 1px solid var(--background-modifier-border);
 }
 
+/* ============ Phase Note Panel ============ */
+.tm-note-panel {
+	margin-bottom: 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--background-primary);
+}
+
+.tm-note-panel-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	background: var(--background-secondary);
+	cursor: pointer;
+	user-select: none;
+	transition: background 0.15s ease;
+}
+
+.tm-note-panel-header:hover {
+	background: var(--background-modifier-hover);
+}
+
+.tm-note-panel-toggle {
+	font-size: 10px;
+	color: var(--text-faint);
+	flex-shrink: 0;
+	width: 12px;
+}
+
+.tm-note-panel-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.tm-note-panel-filename {
+	margin-left: auto;
+	font-size: 11px;
+	color: var(--text-accent);
+	cursor: pointer;
+	flex-shrink: 0;
+	border-radius: 3px;
+	padding: 1px 4px;
+	transition: background 0.15s ease;
+}
+
+.tm-note-panel-filename:hover {
+	background: var(--background-modifier-hover);
+	text-decoration: underline;
+}
+
+.tm-note-panel-body {
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.tm-note-panel-content {
+	padding: 8px 12px;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--text-normal);
+}
+
+.tm-note-panel-content p {
+	margin: 0 0 6px 0;
+}
+
+.tm-note-panel-content p:last-child {
+	margin-bottom: 0;
+}
+
+.tm-note-panel-content ul,
+.tm-note-panel-content ol {
+	margin: 0 0 6px 0;
+	padding-left: 20px;
+}
+
+.tm-note-panel-content h1,
+.tm-note-panel-content h2,
+.tm-note-panel-content h3,
+.tm-note-panel-content h4,
+.tm-note-panel-content h5,
+.tm-note-panel-content h6 {
+	margin: 8px 0 4px 0;
+	font-size: 12px;
+	font-weight: 600;
+}
+
 /* ============ Compact Mode ============ */
 .task-maker-container.tm-compact .tm-task-item {
 	padding: 3px 6px;

@@ -7,6 +7,7 @@ import { TagManagerService } from '../services/TagManagerService';
 import { ViewRegistryService } from '../services/ViewRegistryService';
 import { DragDropManager } from './DragDropManager';
 import { ViewNavigator } from './components/ViewNavigator';
+import { PhaseNotePanel } from './components/PhaseNotePanel';
 import { QuadrantGrid } from './components/QuadrantGrid';
 import { CreatePhaseModal } from './components/CreatePhaseModal';
 
@@ -14,6 +15,7 @@ export class MatrixView extends ItemView {
 	private currentViewId: string = '';
 
 	private navigator: ViewNavigator | null = null;
+	private phaseNotePanel: PhaseNotePanel | null = null;
 	private quadrantGrid: QuadrantGrid | null = null;
 	private dragDropManager: DragDropManager;
 
@@ -96,6 +98,7 @@ export class MatrixView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.phaseNotePanel?.destroy();
 		this.eventBus.off('scan-complete', this.onScanComplete);
 		this.eventBus.off('scan-progress', this.onScanProgress);
 		this.eventBus.off('tasks-changed', this.onTasksChanged);
@@ -160,6 +163,9 @@ export class MatrixView extends ItemView {
 		this.progressFillEl = progressBarEl.createDiv({ cls: 'tm-progress-fill' });
 		this.progressTextEl = this.progressWrapEl.createDiv({ cls: 'tm-progress-text' });
 
+		// Phase Note Panel (between navigator and grid)
+		this.phaseNotePanel = new PhaseNotePanel(contentEl, this.app, this.getSettings);
+
 		// Quadrant Grid
 		this.quadrantGrid = new QuadrantGrid(
 			contentEl,
@@ -172,6 +178,7 @@ export class MatrixView extends ItemView {
 	}
 
 	private rebuildUI(): void {
+		this.phaseNotePanel?.destroy();
 		this.buildUI();
 		this.switchView(this.currentViewId);
 	}
@@ -212,6 +219,9 @@ export class MatrixView extends ItemView {
 
 		// Render quadrant grid with filtered tasks
 		this.quadrantGrid?.render(this.currentViewId, gridTasks);
+
+		// Update phase note panel
+		await this.phaseNotePanel?.update(this.currentViewId, settings.phases);
 	}
 
 	private updateProgress(scanned: number, total: number): void {

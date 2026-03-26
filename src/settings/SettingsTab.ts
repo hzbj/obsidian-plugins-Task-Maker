@@ -104,6 +104,46 @@ export class SettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				})
 			);
+
+		// ─── Note Panel ───
+		containerEl.createEl('h2', { text: '笔记内容面板' });
+
+		new Setting(containerEl)
+			.setName('启用笔记内容面板')
+			.setDesc('在象限矩阵上方显示阶段笔记中特定标题下的内容')
+			.addToggle(toggle => toggle
+				.setValue(settings.ui.notePanel.enabled)
+				.onChange(async (value) => {
+					settings.ui.notePanel.enabled = value;
+					await this.plugin.saveSettings();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('提取标题')
+			.setDesc('从这些标题下提取内容显示在面板中，用逗号分隔。')
+			.addText(text => text
+				.setPlaceholder('目标, Goals, Plan, 计划, 概述, Overview')
+				.setValue(settings.ui.notePanel.headings.join(', '))
+				.onChange(async (value) => {
+					settings.ui.notePanel.headings = value
+						.split(',')
+						.map(h => h.trim())
+						.filter(h => h.length > 0);
+					await this.plugin.saveSettings();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('默认展开')
+			.setDesc('面板初始状态是否展开')
+			.addToggle(toggle => toggle
+				.setValue(settings.ui.notePanel.defaultExpanded)
+				.onChange(async (value) => {
+					settings.ui.notePanel.defaultExpanded = value;
+					await this.plugin.saveSettings();
+				})
+			);
 	}
 
 	private renderPhaseList(containerEl: HTMLElement, settings: PluginSettings): void {

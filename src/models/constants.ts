@@ -25,5 +25,10 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 		},
 		showSourceFile: true,
 		compactMode: false,
+		notePanel: {
+			enabled: true,
+			headings: ['目标', 'Goals', 'Plan', '计划', '概述', 'Overview'],
+			defaultExpanded: true,
+		},
 	},
 };

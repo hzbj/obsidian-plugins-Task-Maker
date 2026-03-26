@@ -66,6 +66,11 @@ export interface PluginSettings {
 		quadrantColors: Record<QuadrantCode, string>;
 		showSourceFile: boolean;
 		compactMode: boolean;
+		notePanel: {
+			enabled: boolean;
+			headings: string[];
+			defaultExpanded: boolean;
+		};
 	};
 }
 

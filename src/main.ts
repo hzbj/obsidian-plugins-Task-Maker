@@ -120,6 +120,11 @@ export default class TaskMakerPlugin extends Plugin {
 					{}, DEFAULT_SETTINGS.ui.quadrantColors, data.ui.quadrantColors
 				);
 			}
+			if (data.ui?.notePanel) {
+				this.settings.ui.notePanel = Object.assign(
+					{}, DEFAULT_SETTINGS.ui.notePanel, data.ui.notePanel
+				);
+			}
 		}
 	}
 
