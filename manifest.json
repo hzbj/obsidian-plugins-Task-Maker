@@ -1,7 +1,7 @@
 {
 	"id": "task-maker",
 	"name": "Task Maker",
-	"version": "1.0.1",
+	"version": "2.4.0",
 	"minAppVersion": "1.0.0",
 	"description": "Eisenhower Matrix task management plugin - extract tasks from your vault, organize them into four quadrants across phase and time views.",
 	"author": "Task Maker",
