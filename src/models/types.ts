@@ -71,6 +71,8 @@ export interface PhaseDefinition {
 	autoDetected?: boolean;
 	subdivisionUnit?: SubdivisionUnit;
 	customSubdivisions?: PhaseSubdivision[];
+	priority?: number;
+	archived?: boolean;
 }
 
 // ============ Settings ============

@@ -41,9 +41,9 @@ export class TimelineOverview {
 		// Body
 		this.bodyEl = this.el.createDiv({ cls: 'tm-timeline-body' });
 
-		// Filter phases with valid timePeriod
+		// Filter phases with valid timePeriod (excluding archived phases)
 		const validPhases = phases
-			.filter(p => p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end))
+			.filter(p => !p.archived && p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end))
 			.sort((a, b) => a.order - b.order);
 
 		if (validPhases.length === 0) {

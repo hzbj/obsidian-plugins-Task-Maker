@@ -24,7 +24,14 @@ export class ViewRegistryService {
 	/** Get all phase view definitions */
 	getPhaseViews(): ViewDefinition[] {
 		return this.getSettings().phases
-			.sort((a, b) => a.order - b.order)
+			.filter(p => !p.archived)  // 过滤归档阶段
+			.sort((a, b) => {
+				// 确保 priority 是数字类型，避免字符串比较问题
+				const pa = typeof a.priority === 'number' ? a.priority : (parseInt(a.priority as unknown as string, 10) || 999);
+				const pb = typeof b.priority === 'number' ? b.priority : (parseInt(b.priority as unknown as string, 10) || 999);
+				if (pa !== pb) return pa - pb;
+				return a.order - b.order;
+			})
 			.map(p => ({
 				id: p.id,
 				type: 'phase' as ViewType,

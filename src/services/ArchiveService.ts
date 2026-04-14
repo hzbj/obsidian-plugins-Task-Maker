@@ -56,8 +56,11 @@ export class ArchiveService {
 			}
 		}
 
-		// Remove the phase from settings
-		settings.phases = settings.phases.filter(p => p.id !== phaseId);
+		// Mark the phase as archived instead of removing
+		const archivedPhase = settings.phases.find(p => p.id === phaseId);
+		if (archivedPhase) {
+			archivedPhase.archived = true;
+		}
 		await this.saveSettings();
 
 		this.eventBus.emit('phase-archived', { phaseId, archivePath });

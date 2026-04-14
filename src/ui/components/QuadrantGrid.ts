@@ -59,7 +59,7 @@ export class QuadrantGrid {
 		this.dragDropManager.setupUnassignedDropZone(this.unassignedEl);
 
 		// Phase notes tray
-		this.phaseNotesEl = container.createDiv({ cls: 'tm-phase-notes-tray' });
+		this.phaseNotesEl = container.createDiv({ cls: 'tm-unassigned-tray tm-phase-notes-tray' });
 		this.phaseNotesEl.style.display = 'none';
 		const notesHeader = this.phaseNotesEl.createDiv({ cls: 'tm-unassigned-header' });
 		notesHeader.createSpan({ cls: 'tm-unassigned-title', text: '阶段笔记' });
@@ -123,7 +123,7 @@ export class QuadrantGrid {
 			this.phaseNotesEl.style.display = '';
 			this.phaseNotesCountEl.textContent = `${phaseNotes.length}`;
 			for (const note of phaseNotes) {
-				const noteEl = this.phaseNotesListEl.createDiv({ cls: 'tm-phase-note-item' });
+				const noteEl = this.phaseNotesListEl.createDiv({ cls: 'tm-task-item tm-phase-note-item' });
 				noteEl.createSpan({ cls: 'tm-note-icon', text: '📄' });
 				noteEl.createSpan({ cls: 'tm-note-title', text: note.fileName });
 				noteEl.addEventListener('click', () => {

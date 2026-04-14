@@ -170,21 +170,24 @@ export default class TaskMakerPlugin extends Plugin {
 		const updated: string[] = [];
 		const removed: string[] = [];
 
-		// Build a map of detected phases by phaseId (first one wins for duplicates)
-		const detectedById = new Map<string, DetectedPhaseInfo>();
+		// Build a map of detected phases by phaseId (group all files with same phaseId)
+		const detectedById = new Map<string, DetectedPhaseInfo[]>();
 		for (const info of detected) {
-			if (detectedById.has(info.phaseId)) {
-				console.warn(`[TaskMaker] Duplicate phase-id "${info.phaseId}" in files: ${detectedById.get(info.phaseId)!.filePath} and ${info.filePath}`);
-				continue;
+			const existing = detectedById.get(info.phaseId);
+			if (existing) {
+				existing.push(info);
+			} else {
+				detectedById.set(info.phaseId, [info]);
 			}
-			detectedById.set(info.phaseId, info);
 		}
 
 		// Sync detected phases into settings
-		for (const [phaseId, info] of detectedById) {
+		for (const [phaseId, infos] of detectedById) {
+			const info = infos[0]; // Use first file's info as representative
 			const existing = settings.phases.find(p => p.id === phaseId);
 			if (existing) {
-				if (existing.noteFilePath !== info.filePath) {
+				// noteFilePath: use first file's path if current path not in detected files
+				if (!existing.noteFilePath || !infos.some(i => i.filePath === existing.noteFilePath)) {
 					existing.noteFilePath = info.filePath;
 					changed = true;
 					updated.push(phaseId);

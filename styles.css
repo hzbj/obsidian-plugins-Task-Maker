@@ -955,33 +955,14 @@
 }
 
 /* ─── Phase Notes Tray ─── */
+/* 复用 .tm-unassigned-tray 的样式，只保留必要的差异化样式 */
 .tm-phase-notes-tray {
-	margin-top: 6px;
-	padding: 6px 8px;
-	border-top: 1px dashed var(--background-modifier-border);
-}
-
-.tm-phase-notes-tray .tm-tray-label {
-	font-size: 0.8em;
-	font-weight: 600;
-	color: var(--text-muted);
-	margin-bottom: 4px;
+	/* 继承自 .tm-unassigned-tray，无额外样式 */
 }
 
 .tm-phase-note-item {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 4px 8px;
-	border-radius: 4px;
+	/* 继承自 .tm-task-item，只保留笔记特有的样式 */
 	cursor: pointer;
-	font-size: 0.85em;
-	color: var(--text-normal);
-	transition: background-color 0.15s ease;
-}
-
-.tm-phase-note-item:hover {
-	background-color: var(--background-modifier-hover);
 }
 
 .tm-phase-note-item .tm-note-icon {
@@ -990,6 +971,12 @@
 }
 
 .tm-phase-note-item .tm-note-title {
+	flex: 1;
+	min-width: 0;
+	font-size: 13px;
+	color: var(--text-normal);
+	line-height: 1.4;
+	word-break: break-word;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -1190,65 +1177,14 @@
 	flex-shrink: 0;
 }
 
-/* ── Task Priority ── */
-.tm-priority-container {
-	display: inline-flex;
-	align-items: center;
-	gap: 2px;
-	margin-right: 4px;
-	flex-shrink: 0;
-}
-
-.tm-priority-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 18px;
-	height: 18px;
-	padding: 0;
-	border: 1.5px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: transparent;
-	color: var(--text-muted);
-	font-size: 10px;
-	font-weight: 600;
-	cursor: pointer;
-	transition: all 0.15s ease;
-	line-height: 1;
-}
-
-.tm-priority-btn:hover {
-	border-color: var(--interactive-accent);
-	color: var(--interactive-accent);
-	background: rgba(var(--interactive-accent-rgb), 0.08);
-}
-
-.tm-priority-btn.tm-priority-active {
-	border-color: var(--interactive-accent);
-	color: white;
-	background: var(--interactive-accent);
-}
-
-.tm-priority-btn.tm-priority-first {
+/* ── Phase Priority ── */
+.tm-phase-btn.tm-phase-btn-priority-1 {
 	border-color: #e67e22;
-	background: linear-gradient(135deg, #f39c12, #e67e22);
-	color: white;
-	box-shadow: 0 1px 3px rgba(243, 156, 18, 0.35);
+	background: linear-gradient(135deg, rgba(243, 156, 18, 0.15), rgba(230, 126, 34, 0.15));
+	font-weight: 600;
 }
 
-.tm-priority-btn.tm-priority-first:hover {
-	box-shadow: 0 2px 6px rgba(243, 156, 18, 0.45);
-}
-
-/* 第一任务行高亮 */
-.tm-task-item.tm-priority-1 {
-	border-left: 3px solid #f39c12;
-	padding-left: 4px;
-	background: rgba(243, 156, 18, 0.04);
-}
-
-/* 第二任务行轻微标记 */
-.tm-task-item.tm-priority-2 {
-	border-left: 2px solid var(--interactive-accent);
-	padding-left: 5px;
+.tm-phase-btn.tm-phase-btn-priority-2 {
+	border-color: var(--interactive-accent);
+	background: rgba(var(--interactive-accent-rgb), 0.08);
 }

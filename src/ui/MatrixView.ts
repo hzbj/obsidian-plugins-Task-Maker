@@ -136,6 +136,8 @@ export class MatrixView extends ItemView {
 			contentEl,
 			this.viewRegistry,
 			this.eventBus,
+			() => this.getSettings().phases,
+			async () => { await this.saveSettings?.(); },
 			this.onAddPhaseToNote
 				? () => {
 					const activeFile = this.app.workspace.getActiveFile();
@@ -222,7 +224,12 @@ export class MatrixView extends ItemView {
 		});
 
 		// Phase Note Panel (between navigator and grid)
-		this.phaseNotePanel = new PhaseNotePanel(contentEl, this.app, this.getSettings);
+		this.phaseNotePanel = new PhaseNotePanel(
+			contentEl,
+			this.app,
+			this.getSettings,
+			(phaseId) => this.taskScanner.getPhaseNotes(phaseId)
+		);
 
 		// Quadrant Grid
 		this.quadrantGrid = new QuadrantGrid(
@@ -313,8 +320,13 @@ export class MatrixView extends ItemView {
 
 		// Build noteFilePath -> phaseId mapping
 		const noteToPhase = new Map<string, string>();
+		// From detected phases (supports multiple files per phase)
+		for (const phaseNote of this.taskScanner.getDetectedPhases()) {
+			noteToPhase.set(phaseNote.filePath, phaseNote.phaseId);
+		}
+		// Ensure settings phases are also included
 		for (const phase of settings.phases) {
-			if (phase.noteFilePath) {
+			if (phase.noteFilePath && !noteToPhase.has(phase.noteFilePath)) {
 				noteToPhase.set(phase.noteFilePath, phase.id);
 			}
 		}

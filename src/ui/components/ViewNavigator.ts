@@ -1,6 +1,7 @@
 import { EventBus } from '../../services/EventBus';
 import { ViewRegistryService } from '../../services/ViewRegistryService';
 import { PhaseSelector } from './PhaseSelector';
+import { PhaseDefinition } from '../../models/types';
 
 export class ViewNavigator {
 	el: HTMLElement;
@@ -19,6 +20,8 @@ export class ViewNavigator {
 		private container: HTMLElement,
 		private viewRegistry: ViewRegistryService,
 		private eventBus: EventBus,
+		private getPhases: () => PhaseDefinition[],
+		private savePhases: () => Promise<void>,
 		private onAddPhase?: () => void,
 		private onToggleFilter?: () => void,
 		private onArchivePhase?: (phaseId: string) => void,
@@ -76,7 +79,7 @@ export class ViewNavigator {
 
 		// Phase view controls
 		this.phaseControlsEl = this.el.createDiv({ cls: 'tm-phase-controls' });
-		this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus, onArchivePhase, onDeletePhase);
+		this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus, this.getPhases, this.savePhases, onArchivePhase, onDeletePhase);
 
 		if (this.onAddPhase) {
 			const addBtn = this.phaseControlsEl.createEl('button', {

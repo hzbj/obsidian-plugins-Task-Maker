@@ -576,7 +576,13 @@ var ViewRegistryService = class {
   }
   /** Get all phase view definitions */
   getPhaseViews() {
-    return this.getSettings().phases.sort((a, b) => a.order - b.order).map((p) => ({
+    return this.getSettings().phases.filter((p) => !p.archived).sort((a, b) => {
+      const pa = typeof a.priority === "number" ? a.priority : parseInt(a.priority, 10) || 999;
+      const pb = typeof b.priority === "number" ? b.priority : parseInt(b.priority, 10) || 999;
+      if (pa !== pb)
+        return pa - pb;
+      return a.order - b.order;
+    }).map((p) => ({
       id: p.id,
       type: "phase",
       label: p.label,
@@ -652,7 +658,10 @@ var ArchiveService = class {
         }
       }
     }
-    settings.phases = settings.phases.filter((p) => p.id !== phaseId);
+    const archivedPhase = settings.phases.find((p) => p.id === phaseId);
+    if (archivedPhase) {
+      archivedPhase.archived = true;
+    }
     await this.saveSettings();
     this.eventBus.emit("phase-archived", { phaseId, archivePath });
     new import_obsidian3.Notice(`\u9636\u6BB5\u300C${phaseLabel}\u300D\u5DF2\u5F52\u6863\uFF0C\u79FB\u52A8\u4E86 ${movedCount} \u4E2A\u6587\u4EF6\u5230 ${archivePath}`);
@@ -813,10 +822,12 @@ var DragDropManager = class {
 // src/ui/components/PhaseSelector.ts
 var import_obsidian4 = require("obsidian");
 var PhaseSelector = class {
-  constructor(container, viewRegistry, eventBus, onArchivePhase, onDeletePhase) {
+  constructor(container, viewRegistry, eventBus, getPhases, savePhases, onArchivePhase, onDeletePhase) {
     this.container = container;
     this.viewRegistry = viewRegistry;
     this.eventBus = eventBus;
+    this.getPhases = getPhases;
+    this.savePhases = savePhases;
     this.onArchivePhase = onArchivePhase;
     this.onDeletePhase = onDeletePhase;
     this.currentViewId = "";
@@ -833,7 +844,9 @@ var PhaseSelector = class {
       });
       return;
     }
+    const phaseDefinitions = this.getPhases();
     for (const phase of phases) {
+      const phaseDef = phaseDefinitions.find((p) => p.id === phase.id);
       const btn = this.el.createEl("button", {
         cls: "tm-phase-btn",
         text: phase.label
@@ -842,12 +855,28 @@ var PhaseSelector = class {
       if (phase.id === this.currentViewId) {
         btn.classList.add("tm-phase-btn-active");
       }
+      const priorityNum = typeof (phaseDef == null ? void 0 : phaseDef.priority) === "number" ? phaseDef.priority : parseInt(phaseDef == null ? void 0 : phaseDef.priority, 10);
+      if (priorityNum === 1) {
+        btn.classList.add("tm-phase-btn-priority-1");
+      }
+      if (priorityNum === 2) {
+        btn.classList.add("tm-phase-btn-priority-2");
+      }
       btn.addEventListener("click", () => {
         this.eventBus.emit("view-switched", { viewId: phase.id, viewType: "phase" });
       });
       btn.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const menu = new import_obsidian4.Menu();
+        const currentPriorityRaw = phaseDef == null ? void 0 : phaseDef.priority;
+        const currentPriority = typeof currentPriorityRaw === "number" ? currentPriorityRaw : parseInt(currentPriorityRaw, 10);
+        menu.addItem((item) => item.setTitle(`\u8BBE\u4E3A\u7B2C\u4E00\u9636\u6BB5${currentPriority === 1 ? " \u2713" : ""}`).setIcon("star").onClick(async () => {
+          await this.setPhasePriority(phase.id, currentPriority === 1 ? void 0 : 1);
+        }));
+        menu.addItem((item) => item.setTitle(`\u8BBE\u4E3A\u7B2C\u4E8C\u9636\u6BB5${currentPriority === 2 ? " \u2713" : ""}`).setIcon("bookmark").onClick(async () => {
+          await this.setPhasePriority(phase.id, currentPriority === 2 ? void 0 : 2);
+        }));
+        menu.addSeparator();
         if (this.onArchivePhase) {
           menu.addItem(
             (item) => item.setTitle("\u5F52\u6863\u9636\u6BB5").setIcon("archive").onClick(() => this.onArchivePhase(phase.id))
@@ -869,14 +898,33 @@ var PhaseSelector = class {
       el.classList.toggle("tm-phase-btn-active", el.dataset.viewId === viewId);
     });
   }
+  async setPhasePriority(phaseId, priority) {
+    const phases = this.getPhases();
+    if (priority !== void 0) {
+      for (const p of phases) {
+        const pPriority = typeof p.priority === "number" ? p.priority : parseInt(p.priority, 10);
+        if (p.id !== phaseId && pPriority === priority) {
+          p.priority = void 0;
+        }
+      }
+    }
+    const currentPhase = phases.find((p) => p.id === phaseId);
+    if (currentPhase) {
+      currentPhase.priority = priority;
+    }
+    await this.savePhases();
+    this.refresh();
+  }
 };
 
 // src/ui/components/ViewNavigator.ts
 var ViewNavigator = class {
-  constructor(container, viewRegistry, eventBus, onAddPhase, onToggleFilter, onArchivePhase, onDeletePhase) {
+  constructor(container, viewRegistry, eventBus, getPhases, savePhases, onAddPhase, onToggleFilter, onArchivePhase, onDeletePhase) {
     this.container = container;
     this.viewRegistry = viewRegistry;
     this.eventBus = eventBus;
+    this.getPhases = getPhases;
+    this.savePhases = savePhases;
     this.onAddPhase = onAddPhase;
     this.onToggleFilter = onToggleFilter;
     this.onArchivePhase = onArchivePhase;
@@ -927,7 +975,7 @@ var ViewNavigator = class {
     });
     this.scanHostEl = topRow.createDiv({ cls: "tm-scan-host" });
     this.phaseControlsEl = this.el.createDiv({ cls: "tm-phase-controls" });
-    this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus, onArchivePhase, onDeletePhase);
+    this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus, this.getPhases, this.savePhases, onArchivePhase, onDeletePhase);
     if (this.onAddPhase) {
       const addBtn = this.phaseControlsEl.createEl("button", {
         cls: "tm-add-phase-btn",
@@ -1024,9 +1072,10 @@ function extractNoteContent(rawContent, targetHeadings) {
 
 // src/ui/components/PhaseNotePanel.ts
 var PhaseNotePanel = class {
-  constructor(parentEl, app, getSettings) {
+  constructor(parentEl, app, getSettings, getPhaseNotes) {
     this.app = app;
     this.getSettings = getSettings;
+    this.getPhaseNotes = getPhaseNotes;
     this.expanded = this.getSettings().ui.notePanel.defaultExpanded;
     this.renderComponent = new import_obsidian5.Component();
     this.renderComponent.load();
@@ -1050,39 +1099,83 @@ var PhaseNotePanel = class {
     this.contentEl = this.bodyEl.createDiv({ cls: "tm-note-panel-content" });
   }
   async update(phaseId, phases) {
+    var _a, _b, _c;
     const settings = this.getSettings();
     if (!settings.ui.notePanel.enabled) {
       this.el.style.display = "none";
       return;
     }
-    const phase = phases.find((p) => p.id === phaseId);
-    if (!(phase == null ? void 0 : phase.noteFilePath)) {
+    const phaseNotes = (_b = (_a = this.getPhaseNotes) == null ? void 0 : _a.call(this, phaseId)) != null ? _b : [];
+    if (phaseNotes.length === 0) {
+      const phase = phases.find((p) => p.id === phaseId);
+      if (!(phase == null ? void 0 : phase.noteFilePath)) {
+        this.el.style.display = "none";
+        return;
+      }
+      const file = this.app.vault.getAbstractFileByPath(phase.noteFilePath);
+      if (!(file instanceof import_obsidian5.TFile)) {
+        this.el.style.display = "none";
+        return;
+      }
+      const rawContent = await this.app.vault.cachedRead(file);
+      const markdown = extractNoteContent(rawContent, settings.ui.notePanel.headings);
+      if (!markdown.trim()) {
+        this.el.style.display = "none";
+        return;
+      }
+      this.fileNameEl.textContent = file.basename;
+      this.fileNameEl.title = `\u6253\u5F00 ${file.path}`;
+      this.fileNameEl.onclick = (e) => {
+        e.stopPropagation();
+        this.app.workspace.openLinkText(file.path, "", false);
+      };
+      this.contentEl.empty();
+      await import_obsidian5.MarkdownRenderer.render(
+        this.app,
+        markdown,
+        this.contentEl,
+        file.path,
+        this.renderComponent
+      );
+      this.el.style.display = "block";
+      return;
+    }
+    const contentParts = [];
+    const validFiles = [];
+    for (const noteInfo of phaseNotes) {
+      const file = this.app.vault.getAbstractFileByPath(noteInfo.filePath);
+      if (!(file instanceof import_obsidian5.TFile))
+        continue;
+      const rawContent = await this.app.vault.cachedRead(file);
+      const markdown = extractNoteContent(rawContent, settings.ui.notePanel.headings);
+      if (markdown.trim()) {
+        contentParts.push(markdown);
+        validFiles.push({ file, noteInfo });
+      }
+    }
+    if (contentParts.length === 0) {
       this.el.style.display = "none";
       return;
     }
-    const file = this.app.vault.getAbstractFileByPath(phase.noteFilePath);
-    if (!(file instanceof import_obsidian5.TFile)) {
-      this.el.style.display = "none";
-      return;
+    if (validFiles.length === 1) {
+      this.fileNameEl.textContent = validFiles[0].file.basename;
+      this.fileNameEl.title = `\u6253\u5F00 ${validFiles[0].file.path}`;
+      this.fileNameEl.onclick = (e) => {
+        e.stopPropagation();
+        this.app.workspace.openLinkText(validFiles[0].file.path, "", false);
+      };
+    } else {
+      this.fileNameEl.textContent = `${validFiles.length} \u4E2A\u7B14\u8BB0`;
+      this.fileNameEl.title = validFiles.map((v) => v.file.path).join("\n");
+      this.fileNameEl.onclick = null;
     }
-    const rawContent = await this.app.vault.cachedRead(file);
-    const markdown = extractNoteContent(rawContent, settings.ui.notePanel.headings);
-    if (!markdown.trim()) {
-      this.el.style.display = "none";
-      return;
-    }
-    this.fileNameEl.textContent = file.basename;
-    this.fileNameEl.title = `\u6253\u5F00 ${file.path}`;
-    this.fileNameEl.onclick = (e) => {
-      e.stopPropagation();
-      this.app.workspace.openLinkText(file.path, "", false);
-    };
     this.contentEl.empty();
+    const mergedMarkdown = contentParts.length > 1 ? contentParts.join("\n\n---\n\n") : contentParts[0];
     await import_obsidian5.MarkdownRenderer.render(
       this.app,
-      markdown,
+      mergedMarkdown,
       this.contentEl,
-      file.path,
+      ((_c = validFiles[0]) == null ? void 0 : _c.file.path) || "",
       this.renderComponent
     );
     this.el.style.display = "block";
@@ -1111,12 +1204,6 @@ var TaskItem = class {
     this.el = container.createDiv({ cls: "tm-task-item" });
     if (task.completed) {
       this.el.classList.add("tm-task-completed");
-    }
-    if (this.viewId && task.priorityAssignments[this.viewId] === 1) {
-      this.el.classList.add("tm-priority-1");
-    }
-    if (this.viewId && task.priorityAssignments[this.viewId] === 2) {
-      this.el.classList.add("tm-priority-2");
     }
     this.render();
     this.dragDropManager.setupDraggable(this.el, task.id);
@@ -1147,44 +1234,6 @@ var TaskItem = class {
         });
       }
     });
-    if (this.viewId) {
-      const priorityContainer = this.el.createDiv({ cls: "tm-priority-container" });
-      const currentPriority = this.task.priorityAssignments[this.viewId] || 0;
-      const btn1 = priorityContainer.createEl("button", { cls: "tm-priority-btn tm-priority-btn-1" });
-      btn1.textContent = "1";
-      btn1.title = "\u7B2C\u4E00\u4EFB\u52A1";
-      if (currentPriority === 1) {
-        btn1.classList.add("tm-priority-active", "tm-priority-first");
-      }
-      btn1.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const newPriority = currentPriority === 1 ? 0 : 1;
-        await this.tagManager.setTaskPriority(this.task, this.viewId, newPriority);
-        this.task.priorityAssignments[this.viewId] = newPriority || 0;
-        this.eventBus.emit("task-updated", {
-          taskId: this.task.id,
-          viewId: this.viewId,
-          quadrant: this.task.quadrantAssignments[this.viewId] || null
-        });
-      });
-      const btn2 = priorityContainer.createEl("button", { cls: "tm-priority-btn tm-priority-btn-2" });
-      btn2.textContent = "2";
-      btn2.title = "\u7B2C\u4E8C\u4EFB\u52A1";
-      if (currentPriority === 2) {
-        btn2.classList.add("tm-priority-active");
-      }
-      btn2.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const newPriority = currentPriority === 2 ? 0 : 2;
-        await this.tagManager.setTaskPriority(this.task, this.viewId, newPriority);
-        this.task.priorityAssignments[this.viewId] = newPriority || 0;
-        this.eventBus.emit("task-updated", {
-          taskId: this.task.id,
-          viewId: this.viewId,
-          quadrant: this.task.quadrantAssignments[this.viewId] || null
-        });
-      });
-    }
     const textEl = this.el.createDiv({ cls: "tm-task-text" });
     textEl.textContent = this.task.text;
     if ((opts == null ? void 0 : opts.isCollapsed) && opts.childCount && opts.childCount > 0) {
@@ -1350,7 +1399,7 @@ var QuadrantGrid = class {
     });
     this.unassignedListEl = this.unassignedEl.createDiv({ cls: "tm-task-list" });
     this.dragDropManager.setupUnassignedDropZone(this.unassignedEl);
-    this.phaseNotesEl = container.createDiv({ cls: "tm-phase-notes-tray" });
+    this.phaseNotesEl = container.createDiv({ cls: "tm-unassigned-tray tm-phase-notes-tray" });
     this.phaseNotesEl.style.display = "none";
     const notesHeader = this.phaseNotesEl.createDiv({ cls: "tm-unassigned-header" });
     notesHeader.createSpan({ cls: "tm-unassigned-title", text: "\u9636\u6BB5\u7B14\u8BB0" });
@@ -1406,7 +1455,7 @@ var QuadrantGrid = class {
       this.phaseNotesEl.style.display = "";
       this.phaseNotesCountEl.textContent = `${phaseNotes.length}`;
       for (const note of phaseNotes) {
-        const noteEl = this.phaseNotesListEl.createDiv({ cls: "tm-phase-note-item" });
+        const noteEl = this.phaseNotesListEl.createDiv({ cls: "tm-task-item tm-phase-note-item" });
         noteEl.createSpan({ cls: "tm-note-icon", text: "\u{1F4C4}" });
         noteEl.createSpan({ cls: "tm-note-title", text: note.fileName });
         noteEl.addEventListener("click", () => {
@@ -1700,7 +1749,7 @@ var TimelineOverview = class {
     header.createSpan({ cls: "tm-timeline-title", text: "\u9879\u76EE\u65F6\u95F4\u8F74" });
     this.headerRangeEl = header.createSpan({ cls: "tm-timeline-range" });
     this.bodyEl = this.el.createDiv({ cls: "tm-timeline-body" });
-    const validPhases = phases.filter((p) => p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end)).sort((a, b) => a.order - b.order);
+    const validPhases = phases.filter((p) => !p.archived && p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end)).sort((a, b) => a.order - b.order);
     if (validPhases.length === 0) {
       this.renderEmpty();
       return;
@@ -2299,6 +2348,11 @@ var MatrixView = class extends import_obsidian8.ItemView {
       contentEl,
       this.viewRegistry,
       this.eventBus,
+      () => this.getSettings().phases,
+      async () => {
+        var _a;
+        await ((_a = this.saveSettings) == null ? void 0 : _a.call(this));
+      },
       this.onAddPhaseToNote ? () => {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
@@ -2371,7 +2425,12 @@ var MatrixView = class extends import_obsidian8.ItemView {
       await ((_a = this.saveSettings) == null ? void 0 : _a.call(this));
       this.refresh();
     });
-    this.phaseNotePanel = new PhaseNotePanel(contentEl, this.app, this.getSettings);
+    this.phaseNotePanel = new PhaseNotePanel(
+      contentEl,
+      this.app,
+      this.getSettings,
+      (phaseId) => this.taskScanner.getPhaseNotes(phaseId)
+    );
     this.quadrantGrid = new QuadrantGrid(
       contentEl,
       this.app,
@@ -2465,8 +2524,11 @@ var MatrixView = class extends import_obsidian8.ItemView {
     }
     const settings = this.getSettings();
     const noteToPhase = /* @__PURE__ */ new Map();
+    for (const phaseNote of this.taskScanner.getDetectedPhases()) {
+      noteToPhase.set(phaseNote.filePath, phaseNote.phaseId);
+    }
     for (const phase of settings.phases) {
-      if (phase.noteFilePath) {
+      if (phase.noteFilePath && !noteToPhase.has(phase.noteFilePath)) {
         noteToPhase.set(phase.noteFilePath, phase.id);
       }
     }
@@ -2959,16 +3021,18 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
     const removed = [];
     const detectedById = /* @__PURE__ */ new Map();
     for (const info of detected) {
-      if (detectedById.has(info.phaseId)) {
-        console.warn(`[TaskMaker] Duplicate phase-id "${info.phaseId}" in files: ${detectedById.get(info.phaseId).filePath} and ${info.filePath}`);
-        continue;
+      const existing = detectedById.get(info.phaseId);
+      if (existing) {
+        existing.push(info);
+      } else {
+        detectedById.set(info.phaseId, [info]);
       }
-      detectedById.set(info.phaseId, info);
     }
-    for (const [phaseId, info] of detectedById) {
+    for (const [phaseId, infos] of detectedById) {
+      const info = infos[0];
       const existing = settings.phases.find((p) => p.id === phaseId);
       if (existing) {
-        if (existing.noteFilePath !== info.filePath) {
+        if (!existing.noteFilePath || !infos.some((i) => i.filePath === existing.noteFilePath)) {
           existing.noteFilePath = info.filePath;
           changed = true;
           updated.push(phaseId);
