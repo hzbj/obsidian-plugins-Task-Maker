@@ -30,5 +30,14 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 			headings: ['目标', 'Goals', 'Plan', '计划', '概述', 'Overview'],
 			defaultExpanded: true,
 		},
+		showOverviewSubdivisions: false,
+		showOverviewCustomSegments: false,
 	},
+	defaultSubdivisionUnit: 'week',
+	archiveBasePath: '归档',
+	archiveCategories: [
+		{ code: 'P', label: '个人项目' },
+		{ code: 'W', label: '工作项目' },
+		{ code: 'S', label: '学习项目' },
+	],
 };

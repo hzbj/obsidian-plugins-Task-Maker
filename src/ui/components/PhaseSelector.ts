@@ -1,6 +1,7 @@
 import { ViewDefinition } from '../../models/types';
 import { EventBus } from '../../services/EventBus';
 import { ViewRegistryService } from '../../services/ViewRegistryService';
+import { Menu } from 'obsidian';
 
 export class PhaseSelector {
 	el: HTMLElement;
@@ -9,7 +10,9 @@ export class PhaseSelector {
 	constructor(
 		private container: HTMLElement,
 		private viewRegistry: ViewRegistryService,
-		private eventBus: EventBus
+		private eventBus: EventBus,
+		private onArchivePhase?: (phaseId: string) => void,
+		private onDeletePhase?: (phaseId: string) => void
 	) {
 		this.el = container.createDiv({ cls: 'tm-phase-selector' });
 		this.refresh();
@@ -38,6 +41,26 @@ export class PhaseSelector {
 			}
 			btn.addEventListener('click', () => {
 				this.eventBus.emit('view-switched', { viewId: phase.id, viewType: 'phase' });
+			});
+
+			btn.addEventListener('contextmenu', (e) => {
+				e.preventDefault();
+				const menu = new Menu();
+				if (this.onArchivePhase) {
+					menu.addItem(item => item
+						.setTitle('归档阶段')
+						.setIcon('archive')
+						.onClick(() => this.onArchivePhase!(phase.id))
+					);
+				}
+				if (this.onDeletePhase) {
+					menu.addItem(item => item
+						.setTitle('删除阶段')
+						.setIcon('trash')
+						.onClick(() => this.onDeletePhase!(phase.id))
+					);
+				}
+				menu.showAtMouseEvent(e);
 			});
 		}
 	}

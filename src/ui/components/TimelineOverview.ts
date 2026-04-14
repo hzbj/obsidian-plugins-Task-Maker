@@ -1,4 +1,4 @@
-import { PhaseDefinition, PluginSettings } from '../../models/types';
+import { PhaseDefinition, PluginSettings, SubdivisionUnit, PhaseSubdivision } from '../../models/types';
 import { EventBus } from '../../services/EventBus';
 
 const TIMELINE_COLORS = [
@@ -15,7 +15,8 @@ export class TimelineOverview {
 	constructor(
 		container: HTMLElement,
 		private getSettings: () => PluginSettings,
-		private eventBus: EventBus
+		private eventBus: EventBus,
+		private saveSettings: () => Promise<void>
 	) {
 		this.el = container.createDiv({ cls: 'tm-timeline-container' });
 		this.el.style.display = 'none';
@@ -107,10 +108,67 @@ export class TimelineOverview {
 
 			// Track + bar + today cursor (same pattern as InlineTimeline)
 			const track = row.createDiv({ cls: 'tm-timeline-row-track' });
+
+			// 细分阶段容器（在轨道上方）- 只创建有效的细分
+			if (this.getSettings().ui.showOverviewCustomSegments) {
+				const validSubdivisions = phase.customSubdivisions?.filter(sub => sub.start && sub.end) || [];
+				if (validSubdivisions.length > 0) {
+					const subdivisionContainer = track.createDiv({ cls: 'tm-timeline-subdivision-container' });
+					subdivisionContainer.createDiv({ cls: 'tm-timeline-subdivision-baseline' });
+
+					for (const customSub of validSubdivisions) {
+						const customStart = this.parseDate(customSub.start);
+						const customEnd = this.parseDate(customSub.end);
+						if (!customStart || !customEnd) continue;
+
+						const customLeftPct = totalDays > 0
+							? (this.daysBetween(projectStart, customStart) / totalDays) * 100
+							: 0;
+						const customWidthPct = totalDays > 0
+							? (this.daysBetween(customStart, customEnd) / totalDays) * 100
+							: 0;
+
+						if (customWidthPct > 0) {
+							const bar = subdivisionContainer.createDiv({ cls: 'tm-timeline-subdivision-bar' });
+							// 留出间隙：左右各减 1px
+							bar.style.left = `calc(${Math.max(0, customLeftPct)}% + 1px)`;
+							bar.style.width = `calc(${Math.max(0.5, customWidthPct)}% - 2px)`;
+
+							// 创建 tooltip
+							const tooltip = bar.createDiv({ cls: 'tm-subdivision-tooltip' });
+							const dateRange = `${customSub.start} — ${customSub.end}`;
+							tooltip.textContent = customSub.description ? `${dateRange}: ${customSub.description}` : dateRange;
+						}
+					}
+				}
+			}
 			const bar = track.createDiv({ cls: 'tm-timeline-row-bar' });
 			bar.style.left = `${Math.max(0, leftPct)}%`;
 			bar.style.width = `${Math.max(0.5, widthPct)}%`;
 			bar.style.background = color;
+
+			// Subdivision rendering
+			const unit = phase.subdivisionUnit || this.getSettings().defaultSubdivisionUnit || 'week';
+
+			// Render automatic subdivision lines
+			if (this.getSettings().ui.showOverviewSubdivisions) {
+				const subdivisionDates = this.generateSubdivisionDates(phaseStart, phaseEnd, unit);
+				for (let idx = 0; idx < subdivisionDates.length; idx++) {
+					const subDate = subdivisionDates[idx];
+					const subPct = totalDays > 0
+						? (this.daysBetween(projectStart, subDate) / totalDays) * 100
+						: 0;
+					if (subPct >= 0 && subPct <= 100) {
+						const line = track.createDiv({ cls: 'tm-timeline-subdivision-line' });
+						line.style.left = `${subPct}%`;
+						line.title = this.formatDate(subDate);
+
+						// 周期标识标签
+						const label = line.createDiv({ cls: 'tm-timeline-subdivision-label' });
+						label.textContent = this.getSubdivisionLabel(unit, idx);
+					}
+				}
+			}
 
 			// Today cursor directly inside each track
 			if (todayPct >= 0 && todayPct <= 100) {
@@ -162,5 +220,77 @@ export class TimelineOverview {
 		const m = String(d.getMonth() + 1).padStart(2, '0');
 		const day = String(d.getDate()).padStart(2, '0');
 		return `${y}-${m}-${day}`;
+	}
+
+	private getSubdivisionLabel(unit: SubdivisionUnit, index: number): string {
+		switch (unit) {
+			case 'day': return `D${index + 1}`;
+			case 'week': return `W${index + 1}`;
+			case 'biweek': return `B${index + 1}`;
+			case 'month': return `M${index + 1}`;
+			default: return `${index + 1}`;
+		}
+	}
+
+	private generateSubdivisionDates(start: Date, end: Date, unit: SubdivisionUnit): Date[] {
+		const dates: Date[] = [];
+		const startTime = start.getTime();
+		const endTime = end.getTime();
+
+		// Skip if range is invalid
+		if (startTime >= endTime) return dates;
+
+		const current = new Date(start);
+
+		switch (unit) {
+			case 'day': {
+				// Add every day between start and end (exclusive)
+				current.setDate(current.getDate() + 1);
+				while (current.getTime() < endTime) {
+					dates.push(new Date(current));
+					current.setDate(current.getDate() + 1);
+				}
+				break;
+			}
+			case 'week': {
+				// Add every 7 days from start
+				current.setDate(current.getDate() + 7);
+				while (current.getTime() < endTime) {
+					dates.push(new Date(current));
+					current.setDate(current.getDate() + 7);
+				}
+				break;
+			}
+			case 'biweek': {
+				// Add every 14 days from start
+				current.setDate(current.getDate() + 14);
+				while (current.getTime() < endTime) {
+					dates.push(new Date(current));
+					current.setDate(current.getDate() + 14);
+				}
+				break;
+			}
+			case 'month': {
+				// Add same day each month (or last day if exceeds)
+				const startDay = start.getDate();
+				current.setMonth(current.getMonth() + 1);
+				while (current.getTime() < endTime) {
+					// Handle month end (e.g., Jan 31 -> Feb 28/29)
+					const daysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+					if (startDay > daysInMonth) {
+						current.setDate(daysInMonth);
+					} else {
+						current.setDate(startDay);
+					}
+					if (current.getTime() < endTime) {
+						dates.push(new Date(current));
+					}
+					current.setMonth(current.getMonth() + 1);
+				}
+				break;
+			}
+		}
+
+		return dates;
 	}
 }

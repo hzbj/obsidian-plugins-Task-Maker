@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { Task, QuadrantCode, PluginSettings, TaskTreeNode } from '../../models/types';
+import { Task, QuadrantCode, PluginSettings, TaskTreeNode, PhaseNoteInfo } from '../../models/types';
 import { QUADRANT_CODES } from '../../models/constants';
 import { TagManagerService } from '../../services/TagManagerService';
 import { EventBus } from '../../services/EventBus';
@@ -18,6 +18,10 @@ export class QuadrantGrid {
 	private collapsedTaskIds: Set<string> = new Set();
 	private lastViewId: string = '';
 	private lastTasks: Task[] = [];
+
+	private phaseNotesEl: HTMLElement;
+	private phaseNotesListEl: HTMLElement;
+	private phaseNotesCountEl: HTMLElement;
 
 	constructor(
 		private container: HTMLElement,
@@ -53,6 +57,22 @@ export class QuadrantGrid {
 
 		this.unassignedListEl = this.unassignedEl.createDiv({ cls: 'tm-task-list' });
 		this.dragDropManager.setupUnassignedDropZone(this.unassignedEl);
+
+		// Phase notes tray
+		this.phaseNotesEl = container.createDiv({ cls: 'tm-phase-notes-tray' });
+		this.phaseNotesEl.style.display = 'none';
+		const notesHeader = this.phaseNotesEl.createDiv({ cls: 'tm-unassigned-header' });
+		notesHeader.createSpan({ cls: 'tm-unassigned-title', text: '阶段笔记' });
+		this.phaseNotesCountEl = notesHeader.createSpan({ cls: 'tm-quadrant-count', text: '0' });
+
+		let notesCollapsed = false;
+		notesHeader.addEventListener('click', () => {
+			notesCollapsed = !notesCollapsed;
+			this.phaseNotesListEl.style.display = notesCollapsed ? 'none' : 'block';
+			notesHeader.classList.toggle('tm-collapsed', notesCollapsed);
+		});
+
+		this.phaseNotesListEl = this.phaseNotesEl.createDiv({ cls: 'tm-task-list' });
 	}
 
 	private toggleCollapse(taskId: string): void {
@@ -65,7 +85,7 @@ export class QuadrantGrid {
 	}
 
 	/** Render tasks grouped by their quadrant assignment for a given viewId */
-	render(viewId: string, tasks: Task[]): void {
+	render(viewId: string, tasks: Task[], phaseNotes?: PhaseNoteInfo[]): void {
 		this.lastViewId = viewId;
 		this.lastTasks = tasks;
 
@@ -95,6 +115,23 @@ export class QuadrantGrid {
 		const forest = buildTaskForest(grouped.unassigned);
 		for (const node of forest) {
 			this.renderUnassignedNode(this.unassignedListEl, node);
+		}
+
+		// Render phase notes
+		this.phaseNotesListEl.empty();
+		if (phaseNotes && phaseNotes.length > 0) {
+			this.phaseNotesEl.style.display = '';
+			this.phaseNotesCountEl.textContent = `${phaseNotes.length}`;
+			for (const note of phaseNotes) {
+				const noteEl = this.phaseNotesListEl.createDiv({ cls: 'tm-phase-note-item' });
+				noteEl.createSpan({ cls: 'tm-note-icon', text: '📄' });
+				noteEl.createSpan({ cls: 'tm-note-title', text: note.fileName });
+				noteEl.addEventListener('click', () => {
+					this.app.workspace.openLinkText(note.filePath, '', false);
+				});
+			}
+		} else {
+			this.phaseNotesEl.style.display = 'none';
 		}
 	}
 

@@ -4,6 +4,17 @@ export type QuadrantCode = 'ui' | 'in' | 'un' | 'nn';
 
 export type ViewType = 'phase';
 
+// ============ Subdivision Types ============
+
+export type SubdivisionUnit = 'day' | 'week' | 'biweek' | 'month';
+
+export interface PhaseSubdivision {
+	id: string;
+	start: string;
+	end: string;
+	description?: string;
+}
+
 // ============ Task ============
 
 export interface Task {
@@ -53,6 +64,8 @@ export interface PhaseDefinition {
 	noteFilePath?: string;
 	description?: string;
 	autoDetected?: boolean;
+	subdivisionUnit?: SubdivisionUnit;
+	customSubdivisions?: PhaseSubdivision[];
 }
 
 // ============ Settings ============
@@ -71,7 +84,12 @@ export interface PluginSettings {
 			headings: string[];
 			defaultExpanded: boolean;
 		};
+		showOverviewSubdivisions: boolean;
+		showOverviewCustomSegments: boolean;
 	};
+	defaultSubdivisionUnit: SubdivisionUnit;
+	archiveBasePath: string;
+	archiveCategories: ArchiveCategoryDef[];
 }
 
 // ============ Events ============
@@ -86,6 +104,8 @@ export interface EventMap {
 	'settings-changed': { settings: PluginSettings };
 	'phases-synced': { added: string[]; updated: string[]; removed: string[] };
 	'timeline-toggled': { active: boolean };
+	'phase-archived': { phaseId: string; archivePath: string };
+	'phase-deleted': { phaseId: string };
 }
 
 // ============ Phase Detection ============
@@ -95,4 +115,17 @@ export interface DetectedPhaseInfo {
 	phaseLabel: string;
 	filePath: string;
 	timePeriod?: { start: string; end: string };
+}
+
+// ============ Archive ============
+
+export interface ArchiveCategoryDef {
+	code: string;
+	label: string;
+}
+
+export interface PhaseNoteInfo {
+	filePath: string;
+	fileName: string;
+	phaseId: string;
 }

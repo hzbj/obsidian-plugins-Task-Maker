@@ -1,12 +1,14 @@
 import { Plugin, WorkspaceLeaf, TFile, Notice } from 'obsidian';
-import { PluginSettings, DetectedPhaseInfo } from './models/types';
+import { PluginSettings, DetectedPhaseInfo, PhaseDefinition } from './models/types';
 import { VIEW_TYPE_MATRIX, DEFAULT_SETTINGS } from './models/constants';
 import { EventBus } from './services/EventBus';
 import { TagManagerService } from './services/TagManagerService';
 import { TaskScannerService } from './services/TaskScannerService';
 import { ViewRegistryService } from './services/ViewRegistryService';
+import { ArchiveService } from './services/ArchiveService';
 import { MatrixView } from './ui/MatrixView';
 import { SettingsTab } from './settings/SettingsTab';
+import { ArchiveModal } from './ui/components/ArchiveModal';
 
 export default class TaskMakerPlugin extends Plugin {
 	settings: PluginSettings = DEFAULT_SETTINGS;
@@ -16,6 +18,7 @@ export default class TaskMakerPlugin extends Plugin {
 	private taskScanner!: TaskScannerService;
 	private viewRegistry!: ViewRegistryService;
 	private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+	private archiveService!: ArchiveService;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -30,6 +33,13 @@ export default class TaskMakerPlugin extends Plugin {
 		);
 		this.viewRegistry = new ViewRegistryService(() => this.settings);
 
+		this.archiveService = new ArchiveService(
+			this.app,
+			this.eventBus,
+			() => this.settings,
+			() => this.saveSettings()
+		);
+
 		// Register the matrix view
 		this.registerView(VIEW_TYPE_MATRIX, (leaf) =>
 			new MatrixView(
@@ -40,7 +50,18 @@ export default class TaskMakerPlugin extends Plugin {
 				this.viewRegistry,
 				() => this.settings,
 				(file, id, label, start, end) => this.addPhaseToActiveNote(file, id, label, start, end),
-				(file, id, label, start, end) => this.completePhaseAttributes(file, id, label, start, end)
+				(file, id, label, start, end) => this.completePhaseAttributes(file, id, label, start, end),
+				undefined,  // onRescan (not used here)
+				(phaseId) => this.openArchiveModal(
+					this.settings.phases.find(p => p.id === phaseId)!
+				),
+				async (phaseId) => {
+					const notes = this.taskScanner.getPhaseNotes(phaseId);
+					await this.archiveService.deletePhase(phaseId, notes.map(n => n.filePath));
+					await this.taskScanner.fullScan();
+					await this.reconcilePhaseNotes();
+				},
+				() => this.saveSettings()
 			)
 		);
 
@@ -125,6 +146,9 @@ export default class TaskMakerPlugin extends Plugin {
 				this.settings.ui.notePanel = Object.assign(
 					{}, DEFAULT_SETTINGS.ui.notePanel, data.ui.notePanel
 				);
+			}
+			if (data.archiveCategories) {
+				this.settings.archiveCategories = data.archiveCategories;
 			}
 		}
 	}
@@ -312,6 +336,36 @@ export default class TaskMakerPlugin extends Plugin {
 		} catch (e) {
 			new Notice(`补全阶段属性失败: ${(e as Error).message}`);
 		}
+	}
+
+	openArchiveModal(phase: PhaseDefinition): void {
+		const notes = this.taskScanner.getPhaseNotes(phase.id);
+		const noteFiles = notes.map(n => ({ filePath: n.filePath, fileName: n.fileName }));
+
+		new ArchiveModal(
+			this.app,
+			phase.label,
+			this.settings.archiveCategories,
+			noteFiles,
+			(code, label) => this.archiveService.buildArchiveFolderName(code, label),
+			async (categoryCode, selectedFiles) => {
+				await this.archiveService.archivePhase(
+					phase.id,
+					categoryCode,
+					phase.label,
+					selectedFiles
+				);
+				await this.taskScanner.fullScan();
+				await this.reconcilePhaseNotes();
+			}
+		).open();
+	}
+
+	async deletePhaseWithNotes(phaseId: string): Promise<void> {
+		const notes = this.taskScanner.getPhaseNotes(phaseId);
+		await this.archiveService.deletePhase(phaseId, notes.map(n => n.filePath));
+		await this.taskScanner.fullScan();
+		await this.reconcilePhaseNotes();
 	}
 
 	private waitForMetadataCache(filePath: string): Promise<void> {

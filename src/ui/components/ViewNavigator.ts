@@ -20,7 +20,9 @@ export class ViewNavigator {
 		private viewRegistry: ViewRegistryService,
 		private eventBus: EventBus,
 		private onAddPhase?: () => void,
-		private onToggleFilter?: () => void
+		private onToggleFilter?: () => void,
+		private onArchivePhase?: (phaseId: string) => void,
+		private onDeletePhase?: (phaseId: string) => void
 	) {
 		this.el = container.createDiv({ cls: 'tm-nav-bar' });
 
@@ -74,7 +76,7 @@ export class ViewNavigator {
 
 		// Phase view controls
 		this.phaseControlsEl = this.el.createDiv({ cls: 'tm-phase-controls' });
-		this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus);
+		this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus, onArchivePhase, onDeletePhase);
 
 		if (this.onAddPhase) {
 			const addBtn = this.phaseControlsEl.createEl('button', {

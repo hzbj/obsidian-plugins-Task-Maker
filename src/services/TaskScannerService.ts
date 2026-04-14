@@ -1,5 +1,5 @@
 import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
-import { Task, QuadrantCode, PluginSettings, DetectedPhaseInfo } from '../models/types';
+import { Task, QuadrantCode, PluginSettings, DetectedPhaseInfo, PhaseNoteInfo } from '../models/types';
 import { CHECKBOX_REGEX } from '../models/constants';
 import { TagManagerService } from './TagManagerService';
 import { EventBus } from './EventBus';
@@ -25,6 +25,24 @@ export class TaskScannerService {
 	/** Get all detected phase notes from last scan */
 	getDetectedPhases(): DetectedPhaseInfo[] {
 		return Array.from(this.detectedPhases.values());
+	}
+
+	/** Get all notes associated with a specific phase */
+	getPhaseNotes(phaseId: string): PhaseNoteInfo[] {
+		const notes: PhaseNoteInfo[] = [];
+		this.detectedPhases.forEach((info) => {
+			if (info.phaseId === phaseId) {
+				// Extract file name without extension from path
+				const parts = info.filePath.split('/');
+				const fileName = (parts[parts.length - 1] || '').replace(/\.md$/, '');
+				notes.push({
+					filePath: info.filePath,
+					fileName: fileName || info.phaseLabel,
+					phaseId: info.phaseId,
+				});
+			}
+		});
+		return notes;
 	}
 
 	/** Full scan of the entire vault */

@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import { PluginSettings, PhaseDefinition } from '../models/types';
+import { PluginSettings, PhaseDefinition, ArchiveCategoryDef, SubdivisionUnit } from '../models/types';
 import { ViewRegistryService } from '../services/ViewRegistryService';
 import { EventBus } from '../services/EventBus';
 import { CreatePhaseModal } from '../ui/components/CreatePhaseModal';
@@ -66,6 +66,44 @@ export class SettingsTab extends PluginSettingTab {
 
 		this.renderPhaseList(containerEl, settings);
 
+		// ─── 时间轴设置 ───
+		containerEl.createEl('h2', { text: '时间轴设置' });
+
+		new Setting(containerEl)
+			.setName('默认时间轴细分单位')
+			.setDesc('设置时间轴上阶段的默认时间细分单位')
+			.addDropdown(dropdown => dropdown
+				.addOptions({
+					'week': '按周（1周）',
+					'biweek': '按双周（2周）',
+					'month': '按月（1月）',
+				})
+				.setValue(this.plugin.settings.defaultSubdivisionUnit || 'week')
+				.onChange(async (value) => {
+					this.plugin.settings.defaultSubdivisionUnit = value as SubdivisionUnit;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('时间轴总览显示默认分段')
+			.setDesc('在时间轴总览中显示按时间单位划分的默认分段标记线')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.ui.showOverviewSubdivisions)
+				.onChange(async (value) => {
+					this.plugin.settings.ui.showOverviewSubdivisions = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('时间轴总览显示细分阶段计划')
+			.setDesc('在时间轴总览中显示自定义的细分阶段计划区块')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.ui.showOverviewCustomSegments)
+				.onChange(async (value) => {
+					this.plugin.settings.ui.showOverviewCustomSegments = value;
+					await this.plugin.saveSettings();
+				}));
+
 		// ─── UI Customization ───
 		containerEl.createEl('h2', { text: '界面定制' });
 
@@ -104,6 +142,23 @@ export class SettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				})
 			);
+
+		// ─── Archive Settings ───
+		containerEl.createEl('h2', { text: '归档设置' });
+
+		new Setting(containerEl)
+			.setName('归档文件夹路径')
+			.setDesc('归档的阶段笔记将被移动到此文件夹下的子目录中')
+			.addText(text => text
+				.setPlaceholder('归档')
+				.setValue(settings.archiveBasePath)
+				.onChange(async (value) => {
+					settings.archiveBasePath = value.trim();
+					await this.plugin.saveSettings();
+				})
+			);
+
+		this.renderArchiveCategories(containerEl, settings);
 
 		// ─── Note Panel ───
 		containerEl.createEl('h2', { text: '笔记内容面板' });
@@ -156,14 +211,19 @@ export class SettingsTab extends PluginSettingTab {
 				.setName(phase.label + (phase.autoDetected ? ' (auto)' : ''))
 				.setDesc(`ID: ${phase.id}` + (phase.noteFilePath ? ` | ${phase.noteFilePath}` : ''))
 				.addButton(btn => btn
+					.setButtonText('归档')
+					.onClick(async () => {
+						this.plugin.openArchiveModal(phase);
+					})
+				)
+				.addButton(btn => btn
 					.setButtonText('删除')
 					.setWarning()
 					.onClick(async () => {
 						if (phase.autoDetected) {
 							new Notice('自动检测的阶段会在下次扫描时重新出现，除非移除笔记中的 phase frontmatter。');
 						}
-						settings.phases = settings.phases.filter(p => p.id !== phase.id);
-						await this.plugin.saveSettings();
+						await this.plugin.deletePhaseWithNotes(phase.id);
 						this.display();
 					})
 				);
@@ -178,6 +238,8 @@ export class SettingsTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 				);
+
+
 		}
 
 		// Add new phase
@@ -211,6 +273,8 @@ export class SettingsTab extends PluginSettingTab {
 						label: newLabel,
 						order: settings.phases.length,
 						description: newDesc || undefined,
+						subdivisionUnit: undefined,
+						customSubdivisions: [],
 					});
 					await this.plugin.saveSettings();
 					this.display();
@@ -224,4 +288,56 @@ export class SettingsTab extends PluginSettingTab {
 				.onChange(value => { newDesc = value; })
 			);
 	}
+
+	private renderArchiveCategories(containerEl: HTMLElement, settings: PluginSettings): void {
+		const listEl = containerEl.createDiv({ cls: 'tm-settings-archive-categories' });
+
+		for (let i = 0; i < settings.archiveCategories.length; i++) {
+			const cat = settings.archiveCategories[i];
+			new Setting(listEl)
+				.setName(`${cat.code} - ${cat.label}`)
+				.addButton(btn => btn
+					.setButtonText('删除')
+					.setWarning()
+					.onClick(async () => {
+						settings.archiveCategories.splice(i, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+				);
+		}
+
+		// Add new category
+		let newCode = '';
+		let newLabel = '';
+
+		new Setting(listEl)
+			.setName('添加归档分类')
+			.addText(text => text
+				.setPlaceholder('代码 (如 P)')
+				.onChange(value => { newCode = value.trim(); })
+			)
+			.addText(text => text
+				.setPlaceholder('名称 (如 个人项目)')
+				.onChange(value => { newLabel = value.trim(); })
+			)
+			.addButton(btn => btn
+				.setButtonText('添加')
+				.setCta()
+				.onClick(async () => {
+					if (!newCode || !newLabel) {
+						new Notice('请输入分类代码和名称');
+						return;
+					}
+					if (settings.archiveCategories.some(c => c.code === newCode)) {
+						new Notice('分类代码已存在');
+						return;
+					}
+					settings.archiveCategories.push({ code: newCode, label: newLabel });
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+	}
+
 }
