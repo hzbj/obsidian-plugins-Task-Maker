@@ -58,7 +58,8 @@ var DEFAULT_SETTINGS = {
       defaultExpanded: true
     },
     showOverviewSubdivisions: false,
-    showOverviewCustomSegments: false
+    showOverviewCustomSegments: false,
+    deadlineWarningDays: 7
   },
   defaultSubdivisionUnit: "week",
   archiveBasePath: "\u5F52\u6863",
@@ -120,6 +121,11 @@ var TagManagerService = class {
     const prefix = this.escapeRegex(this.getPrefix());
     return new RegExp(`#${prefix}([a-zA-Z0-9_]+)-(ui|in|un|nn)\\b`, "g");
   }
+  /** Build a regex that matches priority tags with the current namespace */
+  buildPriorityRegex() {
+    const prefix = this.escapeRegex(this.getPrefix());
+    return new RegExp(`#${prefix}([a-zA-Z0-9_]+)-(p1|p2)\\b`, "g");
+  }
   /**
    * Parse all quadrant tags from a line of text.
    * Returns a record of viewId -> QuadrantCode.
@@ -132,6 +138,22 @@ var TagManagerService = class {
       const viewId = match[1];
       const quadrant = match[2];
       assignments[viewId] = quadrant;
+    }
+    return assignments;
+  }
+  /**
+   * Parse all priority tags from a line of text.
+   * Returns a record of viewId -> PriorityLevel.
+   */
+  parsePriorityTags(line) {
+    const assignments = {};
+    const regex = this.buildPriorityRegex();
+    let match;
+    while ((match = regex.exec(line)) !== null) {
+      const viewId = match[1];
+      const priorityStr = match[2];
+      const priority = parseInt(priorityStr.substring(1));
+      assignments[viewId] = priority;
     }
     return assignments;
   }
@@ -160,6 +182,30 @@ var TagManagerService = class {
     return rawLine;
   }
   /**
+   * Build a new line with the priority tag for a specific viewId updated.
+   * If newPriority is 0 or null, the priority tag for that viewId is removed.
+   */
+  buildUpdatedPriorityLine(rawLine, viewId, newPriority) {
+    const prefix = this.getPrefix();
+    const escapedPrefix = this.escapeRegex(prefix);
+    const tagPattern = new RegExp(
+      `\\s*#${escapedPrefix}${this.escapeRegex(viewId)}-(p1|p2)\\b`,
+      "g"
+    );
+    const hasExisting = tagPattern.test(rawLine);
+    if (hasExisting) {
+      tagPattern.lastIndex = 0;
+      if (newPriority === null || newPriority === 0) {
+        return rawLine.replace(tagPattern, "").replace(/\s{2,}/g, " ").trim();
+      } else {
+        return rawLine.replace(tagPattern, ` #${prefix}${viewId}-p${newPriority}`);
+      }
+    } else if (newPriority !== null && newPriority !== 0) {
+      return `${rawLine} #${prefix}${viewId}-p${newPriority}`;
+    }
+    return rawLine;
+  }
+  /**
    * Update a task's quadrant tag in its source file atomically.
    */
   async updateQuadrantTag(task, viewId, newQuadrant) {
@@ -168,6 +214,38 @@ var TagManagerService = class {
       return false;
     const expectedRaw = task.rawLine;
     const newLine = this.buildUpdatedLine(expectedRaw, viewId, newQuadrant);
+    if (newLine === expectedRaw)
+      return true;
+    let success = false;
+    await this.app.vault.process(file, (content) => {
+      const lines = content.split("\n");
+      if (task.lineNumber < lines.length && lines[task.lineNumber] === expectedRaw) {
+        lines[task.lineNumber] = newLine;
+        success = true;
+        return lines.join("\n");
+      }
+      const idx = lines.indexOf(expectedRaw);
+      if (idx !== -1) {
+        lines[idx] = newLine;
+        success = true;
+        return lines.join("\n");
+      }
+      return content;
+    });
+    return success;
+  }
+  /**
+   * Set a task's priority tag in its source file atomically.
+   * priority=0 means remove the priority tag.
+   * priority=1 means set #T/viewId-p1 (第一任务).
+   * priority=2 means set #T/viewId-p2 (第二任务).
+   */
+  async setTaskPriority(task, viewId, priority) {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof import_obsidian.TFile))
+      return false;
+    const expectedRaw = task.rawLine;
+    const newLine = this.buildUpdatedPriorityLine(expectedRaw, viewId, priority);
     if (newLine === expectedRaw)
       return true;
     let success = false;
@@ -225,8 +303,10 @@ var TagManagerService = class {
   cleanDisplayText(rawLine, triggerTags) {
     let text = rawLine;
     text = text.replace(/^\s*- \[[ xX]\]\s+/, "");
-    const regex = this.buildQuadrantRegex();
-    text = text.replace(regex, "");
+    const quadrantRegex = this.buildQuadrantRegex();
+    text = text.replace(quadrantRegex, "");
+    const priorityRegex = this.buildPriorityRegex();
+    text = text.replace(priorityRegex, "");
     for (const tag of triggerTags) {
       const hashTag = "#" + tag;
       let result = "";
@@ -339,6 +419,7 @@ var TaskScannerService = class {
         continue;
       }
       const quadrantAssignments = this.tagManager.parseQuadrantTags(line);
+      const priorityAssignments = this.tagManager.parsePriorityTags(line);
       const text = this.tagManager.cleanDisplayText(line, settings.triggerTags);
       const indentLevel = ((_b = (_a = line.match(/^\t*/)) == null ? void 0 : _a[0]) != null ? _b : "").length;
       tasks.push({
@@ -350,6 +431,7 @@ var TaskScannerService = class {
         completed,
         triggerType: shouldForce ? "frontmatter" : hasFrontmatterTrigger ? "frontmatter" : "inline",
         quadrantAssignments,
+        priorityAssignments,
         indentLevel
       });
     }
@@ -1016,7 +1098,7 @@ var PhaseNotePanel = class {
 
 // src/ui/components/TaskItem.ts
 var TaskItem = class {
-  constructor(container, task, app, tagManager, eventBus, dragDropManager, settings, collapseOptions) {
+  constructor(container, task, app, tagManager, eventBus, dragDropManager, settings, collapseOptions, viewId) {
     this.container = container;
     this.task = task;
     this.app = app;
@@ -1025,9 +1107,16 @@ var TaskItem = class {
     this.dragDropManager = dragDropManager;
     this.settings = settings;
     this.collapseOptions = collapseOptions;
+    this.viewId = viewId;
     this.el = container.createDiv({ cls: "tm-task-item" });
     if (task.completed) {
       this.el.classList.add("tm-task-completed");
+    }
+    if (this.viewId && task.priorityAssignments[this.viewId] === 1) {
+      this.el.classList.add("tm-priority-1");
+    }
+    if (this.viewId && task.priorityAssignments[this.viewId] === 2) {
+      this.el.classList.add("tm-priority-2");
     }
     this.render();
     this.dragDropManager.setupDraggable(this.el, task.id);
@@ -1058,6 +1147,44 @@ var TaskItem = class {
         });
       }
     });
+    if (this.viewId) {
+      const priorityContainer = this.el.createDiv({ cls: "tm-priority-container" });
+      const currentPriority = this.task.priorityAssignments[this.viewId] || 0;
+      const btn1 = priorityContainer.createEl("button", { cls: "tm-priority-btn tm-priority-btn-1" });
+      btn1.textContent = "1";
+      btn1.title = "\u7B2C\u4E00\u4EFB\u52A1";
+      if (currentPriority === 1) {
+        btn1.classList.add("tm-priority-active", "tm-priority-first");
+      }
+      btn1.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const newPriority = currentPriority === 1 ? 0 : 1;
+        await this.tagManager.setTaskPriority(this.task, this.viewId, newPriority);
+        this.task.priorityAssignments[this.viewId] = newPriority || 0;
+        this.eventBus.emit("task-updated", {
+          taskId: this.task.id,
+          viewId: this.viewId,
+          quadrant: this.task.quadrantAssignments[this.viewId] || null
+        });
+      });
+      const btn2 = priorityContainer.createEl("button", { cls: "tm-priority-btn tm-priority-btn-2" });
+      btn2.textContent = "2";
+      btn2.title = "\u7B2C\u4E8C\u4EFB\u52A1";
+      if (currentPriority === 2) {
+        btn2.classList.add("tm-priority-active");
+      }
+      btn2.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const newPriority = currentPriority === 2 ? 0 : 2;
+        await this.tagManager.setTaskPriority(this.task, this.viewId, newPriority);
+        this.task.priorityAssignments[this.viewId] = newPriority || 0;
+        this.eventBus.emit("task-updated", {
+          taskId: this.task.id,
+          viewId: this.viewId,
+          quadrant: this.task.quadrantAssignments[this.viewId] || null
+        });
+      });
+    }
     const textEl = this.el.createDiv({ cls: "tm-task-text" });
     textEl.textContent = this.task.text;
     if ((opts == null ? void 0 : opts.isCollapsed) && opts.childCount && opts.childCount > 0) {
@@ -1130,6 +1257,7 @@ var QuadrantCell = class {
     this.eventBus = eventBus;
     this.dragDropManager = dragDropManager;
     this.settings = settings;
+    this.currentViewId = "";
     const color = settings.ui.quadrantColors[quadrant];
     this.el = container.createDiv({ cls: `tm-quadrant tm-quadrant-${quadrant}` });
     this.el.style.setProperty("--tm-quadrant-color", color);
@@ -1141,10 +1269,16 @@ var QuadrantCell = class {
     this.taskListEl = this.el.createDiv({ cls: "tm-task-list" });
     this.dragDropManager.setupDropZone(this.el, quadrant);
   }
-  renderTasks(tasks, collapsedIds, onToggleCollapse) {
+  renderTasks(viewId, tasks, collapsedIds, onToggleCollapse) {
+    this.currentViewId = viewId;
     this.taskListEl.empty();
     this.countEl.textContent = `${tasks.length}`;
-    const forest = buildTaskForest(tasks);
+    const sorted = [...tasks].sort((a, b) => {
+      const pa = a.priorityAssignments[viewId] || 99;
+      const pb = b.priorityAssignments[viewId] || 99;
+      return pa - pb;
+    });
+    const forest = buildTaskForest(sorted);
     for (const node of forest) {
       this.renderNode(this.taskListEl, node, collapsedIds, onToggleCollapse);
     }
@@ -1166,7 +1300,8 @@ var QuadrantCell = class {
         isCollapsed,
         childCount,
         onToggleCollapse: () => onToggleCollapse(node.task.id)
-      } : void 0
+      } : void 0,
+      this.currentViewId
     );
     if (hasChildren && !isCollapsed) {
       const childrenContainer = container.createDiv({ cls: "tm-task-children" });
@@ -1258,7 +1393,7 @@ var QuadrantGrid = class {
     }
     const onToggle = (id) => this.toggleCollapse(id);
     for (const code of QUADRANT_CODES) {
-      (_a = this.cells.get(code)) == null ? void 0 : _a.renderTasks(grouped[code], this.collapsedTaskIds, onToggle);
+      (_a = this.cells.get(code)) == null ? void 0 : _a.renderTasks(viewId, grouped[code], this.collapsedTaskIds, onToggle);
     }
     this.unassignedListEl.empty();
     this.unassignedCountEl.textContent = `${grouped.unassigned.length}`;
@@ -1299,7 +1434,8 @@ var QuadrantGrid = class {
         isCollapsed,
         childCount,
         onToggleCollapse: () => this.toggleCollapse(node.task.id)
-      } : void 0
+      } : void 0,
+      this.lastViewId
     );
     if (hasChildren && !isCollapsed) {
       const childrenContainer = container.createDiv({ cls: "tm-task-children" });
@@ -1601,9 +1737,25 @@ var TimelineOverview = class {
       const leftPct = totalDays > 0 ? this.daysBetween(projectStart, phaseStart) / totalDays * 100 : 0;
       const widthPct = totalDays > 0 ? this.daysBetween(phaseStart, phaseEnd) / totalDays * 100 : 100;
       const row = rows.createDiv({ cls: "tm-timeline-row" });
+      const daysToEnd = this.daysBetween(today, phaseEnd);
+      const deadlineWarningDays = this.getSettings().ui.deadlineWarningDays || 7;
       const label = row.createSpan({ cls: "tm-timeline-row-label", text: phase.label });
       label.title = phase.label;
       row.createSpan({ cls: "tm-timeline-row-date", text: phase.timePeriod.start });
+      if (daysToEnd < 0) {
+        row.addClass("tm-timeline-row-ended");
+        const endedEl = row.createDiv({ cls: "tm-timeline-row-ended-text" });
+        endedEl.textContent = `\u5DF2\u7ED3\u675F ${Math.abs(daysToEnd)} \u5929`;
+        row.createSpan({ cls: "tm-timeline-row-date", text: phase.timePeriod.end });
+        row.addEventListener("click", () => {
+          this.eventBus.emit("timeline-toggled", { active: false });
+          this.eventBus.emit("view-switched", { viewId: phase.id, viewType: "phase" });
+        });
+        continue;
+      }
+      if (daysToEnd >= 0 && daysToEnd <= deadlineWarningDays) {
+        row.addClass("tm-timeline-row-warning");
+      }
       const track = row.createDiv({ cls: "tm-timeline-row-track" });
       if (this.getSettings().ui.showOverviewCustomSegments) {
         const validSubdivisions = ((_a = phase.customSubdivisions) == null ? void 0 : _a.filter((sub) => sub.start && sub.end)) || [];
@@ -1803,6 +1955,17 @@ var InlineTimeline = class {
     }
     this.el.style.display = "flex";
     const totalDays = this.daysBetween(start, end);
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysToEnd = this.daysBetween(today, end);
+    const deadlineWarningDays = this.getSettings().ui.deadlineWarningDays || 7;
+    if (daysToEnd < 0) {
+      this.el.createSpan({ cls: "tm-inline-timeline-date", text: phase.timePeriod.start });
+      const endedBadge = this.el.createDiv({ cls: "tm-phase-ended-badge" });
+      endedBadge.textContent = `\u9636\u6BB5\u5DF2\u7ED3\u675F ${Math.abs(daysToEnd)} \u5929`;
+      this.el.createSpan({ cls: "tm-inline-timeline-date", text: phase.timePeriod.end });
+      return;
+    }
     const sortedPhases = [...phases].filter((p) => p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end)).sort((a, b) => a.order - b.order);
     const colorIndex = sortedPhases.findIndex((p) => p.id === currentPhaseId);
     const color = TIMELINE_COLORS2[(colorIndex >= 0 ? colorIndex : 0) % TIMELINE_COLORS2.length];
@@ -1846,8 +2009,6 @@ var InlineTimeline = class {
       }
     }
     if (totalDays > 0) {
-      const today = /* @__PURE__ */ new Date();
-      today.setHours(0, 0, 0, 0);
       const todayPct = this.daysBetween(start, today) / totalDays * 100;
       if (todayPct >= 0 && todayPct <= 100) {
         const cursor = track.createDiv({ cls: "tm-inline-timeline-cursor" });
@@ -1857,6 +2018,10 @@ var InlineTimeline = class {
       }
     }
     this.el.createSpan({ cls: "tm-inline-timeline-date", text: phase.timePeriod.end });
+    if (daysToEnd >= 0 && daysToEnd <= deadlineWarningDays) {
+      const warningBadge = this.el.createSpan({ cls: "tm-phase-warning-badge" });
+      warningBadge.textContent = `\u8FD8\u6709 ${daysToEnd} \u5929\u5230\u671F`;
+    }
     track.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -2394,6 +2559,11 @@ var SettingsTab = class extends import_obsidian9.PluginSettingTab {
       this.plugin.settings.ui.showOverviewCustomSegments = value;
       await this.plugin.saveSettings();
     }));
+    new import_obsidian9.Setting(containerEl).setName("\u5230\u671F\u63D0\u9192\u5929\u6570").setDesc("\u9636\u6BB5\u7ED3\u675F\u65E5\u671F\u524D\u591A\u5C11\u5929\u5F00\u59CB\u9AD8\u4EAE\u63D0\u9192\u5373\u5C06\u5230\u671F").addText((text) => text.setPlaceholder("7").setValue(String(this.plugin.settings.ui.deadlineWarningDays)).onChange(async (value) => {
+      const days = parseInt(value);
+      this.plugin.settings.ui.deadlineWarningDays = isNaN(days) ? 7 : Math.max(0, days);
+      await this.plugin.saveSettings();
+    }));
     containerEl.createEl("h2", { text: "\u754C\u9762\u5B9A\u5236" });
     const quadrantCodes = ["ui", "in", "un", "nn"];
     const defaultLabels = ["\u7D27\u6025\u4E14\u91CD\u8981", "\u91CD\u8981\u4E0D\u7D27\u6025", "\u7D27\u6025\u4E0D\u91CD\u8981", "\u4E0D\u7D27\u6025\u4E0D\u91CD\u8981"];
@@ -2771,6 +2941,9 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
       if (data.archiveCategories) {
         this.settings.archiveCategories = data.archiveCategories;
       }
+      if (this.settings.ui.deadlineWarningDays === void 0) {
+        this.settings.ui.deadlineWarningDays = DEFAULT_SETTINGS.ui.deadlineWarningDays;
+      }
     }
   }
   async saveSettings() {
@@ -2889,14 +3062,22 @@ var TaskMakerPlugin = class extends import_obsidian11.Plugin {
     }
   }
   async addPhaseToActiveNote(file, phaseId, phaseLabel, phaseStart = "", phaseEnd = "") {
-    const validation = this.viewRegistry.isValidPhaseId(phaseId);
-    if (!validation.valid) {
-      new import_obsidian11.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
-      return;
+    var _a, _b;
+    const existingPhase = this.settings.phases.find((p) => p.id === phaseId);
+    if (!existingPhase) {
+      const validation = this.viewRegistry.isValidPhaseId(phaseId);
+      if (!validation.valid) {
+        new import_obsidian11.Notice(`\u65E0\u6548\u7684\u9636\u6BB5 ID: ${validation.reason}`);
+        return;
+      }
     }
-    if (this.settings.phases.some((p) => p.id === phaseId)) {
-      new import_obsidian11.Notice(`\u9636\u6BB5 "${phaseId}" \u5DF2\u5B58\u5728`);
-      return;
+    if (existingPhase) {
+      if (!phaseStart && ((_a = existingPhase.timePeriod) == null ? void 0 : _a.start)) {
+        phaseStart = existingPhase.timePeriod.start;
+      }
+      if (!phaseEnd && ((_b = existingPhase.timePeriod) == null ? void 0 : _b.end)) {
+        phaseEnd = existingPhase.timePeriod.end;
+      }
     }
     try {
       await this.app.fileManager.processFrontMatter(file, (fm) => {

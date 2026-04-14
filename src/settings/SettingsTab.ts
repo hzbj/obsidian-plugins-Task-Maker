@@ -104,6 +104,18 @@ export class SettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		new Setting(containerEl)
+			.setName('到期提醒天数')
+			.setDesc('阶段结束日期前多少天开始高亮提醒即将到期')
+			.addText(text => text
+				.setPlaceholder('7')
+				.setValue(String(this.plugin.settings.ui.deadlineWarningDays))
+				.onChange(async (value) => {
+					const days = parseInt(value);
+					this.plugin.settings.ui.deadlineWarningDays = isNaN(days) ? 7 : Math.max(0, days);
+					await this.plugin.saveSettings();
+				}));
+
 		// ─── UI Customization ───
 		containerEl.createEl('h2', { text: '界面定制' });
 

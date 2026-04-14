@@ -4,6 +4,9 @@ export type QuadrantCode = 'ui' | 'in' | 'un' | 'nn';
 
 export type ViewType = 'phase';
 
+/** Priority level: 1 = 第一任务, 2 = 第二任务 */
+export type PriorityLevel = 1 | 2;
+
 // ============ Subdivision Types ============
 
 export type SubdivisionUnit = 'day' | 'week' | 'biweek' | 'month';
@@ -36,6 +39,8 @@ export interface Task {
 	quadrantAssignments: Record<string, QuadrantCode>;
 	/** Tab-based indent depth (0 = no indent, 1 = one tab, etc.) */
 	indentLevel: number;
+	/** viewId -> priority level (1=第一任务, 2=第二任务, 0或undefined=无优先级) */
+	priorityAssignments: Record<string, number>;
 }
 
 // ============ Task Tree ============
@@ -86,6 +91,7 @@ export interface PluginSettings {
 		};
 		showOverviewSubdivisions: boolean;
 		showOverviewCustomSegments: boolean;
+		deadlineWarningDays: number;
 	};
 	defaultSubdivisionUnit: SubdivisionUnit;
 	archiveBasePath: string;

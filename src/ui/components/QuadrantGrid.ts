@@ -105,7 +105,7 @@ export class QuadrantGrid {
 		const onToggle = (id: string) => this.toggleCollapse(id);
 
 		for (const code of QUADRANT_CODES) {
-			this.cells.get(code)?.renderTasks(grouped[code], this.collapsedTaskIds, onToggle);
+			this.cells.get(code)?.renderTasks(viewId, grouped[code], this.collapsedTaskIds, onToggle);
 		}
 
 		// Render unassigned with tree structure
@@ -153,7 +153,8 @@ export class QuadrantGrid {
 				isCollapsed,
 				childCount,
 				onToggleCollapse: () => this.toggleCollapse(node.task.id),
-			} : undefined
+			} : undefined,
+			this.lastViewId
 		);
 
 		if (hasChildren && !isCollapsed) {

@@ -99,12 +99,36 @@ export class TimelineOverview {
 
 			const row = rows.createDiv({ cls: 'tm-timeline-row' });
 
+			// 阶段状态判断
+			const daysToEnd = this.daysBetween(today, phaseEnd);
+			const deadlineWarningDays = this.getSettings().ui.deadlineWarningDays || 7;
+
 			// Label
 			const label = row.createSpan({ cls: 'tm-timeline-row-label', text: phase.label });
 			label.title = phase.label;
 
 			// Start date
 			row.createSpan({ cls: 'tm-timeline-row-date', text: phase.timePeriod!.start });
+
+			// 情况1：阶段已结束
+			if (daysToEnd < 0) {
+				row.addClass('tm-timeline-row-ended');
+				const endedEl = row.createDiv({ cls: 'tm-timeline-row-ended-text' });
+				endedEl.textContent = `已结束 ${Math.abs(daysToEnd)} 天`;
+				// 结束日期
+				row.createSpan({ cls: 'tm-timeline-row-date', text: phase.timePeriod!.end });
+				// 点击导航
+				row.addEventListener('click', () => {
+					this.eventBus.emit('timeline-toggled', { active: false });
+					this.eventBus.emit('view-switched', { viewId: phase.id, viewType: 'phase' });
+				});
+				continue;
+			}
+
+			// 情况2：即将到期
+			if (daysToEnd >= 0 && daysToEnd <= deadlineWarningDays) {
+				row.addClass('tm-timeline-row-warning');
+			}
 
 			// Track + bar + today cursor (same pattern as InlineTimeline)
 			const track = row.createDiv({ cls: 'tm-timeline-row-track' });

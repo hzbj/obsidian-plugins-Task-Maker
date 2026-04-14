@@ -22,11 +22,18 @@ export class TaskItem {
 		private eventBus: EventBus,
 		private dragDropManager: DragDropManager,
 		private settings: PluginSettings,
-		private collapseOptions?: TaskItemCollapseOptions
+		private collapseOptions?: TaskItemCollapseOptions,
+		private viewId?: string
 	) {
 		this.el = container.createDiv({ cls: 'tm-task-item' });
 		if (task.completed) {
 			this.el.classList.add('tm-task-completed');
+		}
+		if (this.viewId && task.priorityAssignments[this.viewId] === 1) {
+			this.el.classList.add('tm-priority-1');
+		}
+		if (this.viewId && task.priorityAssignments[this.viewId] === 2) {
+			this.el.classList.add('tm-priority-2');
 		}
 
 		this.render();
@@ -61,6 +68,50 @@ export class TaskItem {
 				});
 			}
 		});
+
+		// Priority buttons
+		if (this.viewId) {
+			const priorityContainer = this.el.createDiv({ cls: 'tm-priority-container' });
+			const currentPriority = this.task.priorityAssignments[this.viewId] || 0;
+
+			// 第一任务按钮
+			const btn1 = priorityContainer.createEl('button', { cls: 'tm-priority-btn tm-priority-btn-1' });
+			btn1.textContent = '1';
+			btn1.title = '第一任务';
+			if (currentPriority === 1) {
+				btn1.classList.add('tm-priority-active', 'tm-priority-first');
+			}
+			btn1.addEventListener('click', async (e) => {
+				e.stopPropagation();
+				const newPriority = currentPriority === 1 ? 0 : 1;
+				await this.tagManager.setTaskPriority(this.task, this.viewId!, newPriority);
+				this.task.priorityAssignments[this.viewId!] = newPriority || 0;
+				this.eventBus.emit('task-updated', {
+					taskId: this.task.id,
+					viewId: this.viewId!,
+					quadrant: this.task.quadrantAssignments[this.viewId!] || null
+				});
+			});
+
+			// 第二任务按钮
+			const btn2 = priorityContainer.createEl('button', { cls: 'tm-priority-btn tm-priority-btn-2' });
+			btn2.textContent = '2';
+			btn2.title = '第二任务';
+			if (currentPriority === 2) {
+				btn2.classList.add('tm-priority-active');
+			}
+			btn2.addEventListener('click', async (e) => {
+				e.stopPropagation();
+				const newPriority = currentPriority === 2 ? 0 : 2;
+				await this.tagManager.setTaskPriority(this.task, this.viewId!, newPriority);
+				this.task.priorityAssignments[this.viewId!] = newPriority || 0;
+				this.eventBus.emit('task-updated', {
+					taskId: this.task.id,
+					viewId: this.viewId!,
+					quadrant: this.task.quadrantAssignments[this.viewId!] || null
+				});
+			});
+		}
 
 		// Task text
 		const textEl = this.el.createDiv({ cls: 'tm-task-text' });

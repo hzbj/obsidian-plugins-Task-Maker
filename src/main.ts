@@ -150,6 +150,10 @@ export default class TaskMakerPlugin extends Plugin {
 			if (data.archiveCategories) {
 				this.settings.archiveCategories = data.archiveCategories;
 			}
+			// 确保 deadlineWarningDays 有默认值
+			if (this.settings.ui.deadlineWarningDays === undefined) {
+				this.settings.ui.deadlineWarningDays = DEFAULT_SETTINGS.ui.deadlineWarningDays;
+			}
 		}
 	}
 
@@ -283,15 +287,25 @@ export default class TaskMakerPlugin extends Plugin {
 	}
 
 	async addPhaseToActiveNote(file: TFile, phaseId: string, phaseLabel: string, phaseStart = '', phaseEnd = ''): Promise<void> {
-		const validation = this.viewRegistry.isValidPhaseId(phaseId);
-		if (!validation.valid) {
-			new Notice(`无效的阶段 ID: ${validation.reason}`);
-			return;
+		const existingPhase = this.settings.phases.find(p => p.id === phaseId);
+
+		// Only validate phase ID for new phases
+		if (!existingPhase) {
+			const validation = this.viewRegistry.isValidPhaseId(phaseId);
+			if (!validation.valid) {
+				new Notice(`无效的阶段 ID: ${validation.reason}`);
+				return;
+			}
 		}
 
-		if (this.settings.phases.some(p => p.id === phaseId)) {
-			new Notice(`阶段 "${phaseId}" 已存在`);
-			return;
+		// Use existing phase's time period if not provided
+		if (existingPhase) {
+			if (!phaseStart && existingPhase.timePeriod?.start) {
+				phaseStart = existingPhase.timePeriod.start;
+			}
+			if (!phaseEnd && existingPhase.timePeriod?.end) {
+				phaseEnd = existingPhase.timePeriod.end;
+			}
 		}
 
 		try {

@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 		},
 		showOverviewSubdivisions: false,
 		showOverviewCustomSegments: false,
+		deadlineWarningDays: 7,
 	},
 	defaultSubdivisionUnit: 'week',
 	archiveBasePath: '归档',

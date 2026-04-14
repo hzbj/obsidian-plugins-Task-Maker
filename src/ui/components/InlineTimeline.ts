@@ -53,6 +53,22 @@ export class InlineTimeline {
 
 		const totalDays = this.daysBetween(start, end);
 
+		// 阶段状态判断
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+		const daysToEnd = this.daysBetween(today, end);
+		const deadlineWarningDays = this.getSettings().ui.deadlineWarningDays || 7;
+
+		// 情况1：阶段已结束
+		if (daysToEnd < 0) {
+			this.el.createSpan({ cls: 'tm-inline-timeline-date', text: phase.timePeriod.start });
+			const endedBadge = this.el.createDiv({ cls: 'tm-phase-ended-badge' });
+			endedBadge.textContent = `阶段已结束 ${Math.abs(daysToEnd)} 天`;
+			this.el.createSpan({ cls: 'tm-inline-timeline-date', text: phase.timePeriod.end });
+			return;
+		}
+
+
 		// 确定当前阶段的颜色
 		const sortedPhases = [...phases]
 			.filter(p => p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end))
@@ -120,8 +136,6 @@ export class InlineTimeline {
 
 		// 今天光标
 		if (totalDays > 0) {
-			const today = new Date();
-			today.setHours(0, 0, 0, 0);
 			const todayPct = (this.daysBetween(start, today) / totalDays) * 100;
 
 			if (todayPct >= 0 && todayPct <= 100) {
@@ -135,6 +149,12 @@ export class InlineTimeline {
 
 		// 右侧结束日期
 		this.el.createSpan({ cls: 'tm-inline-timeline-date', text: phase.timePeriod.end });
+
+		// 即将到期警告标签
+		if (daysToEnd >= 0 && daysToEnd <= deadlineWarningDays) {
+			const warningBadge = this.el.createSpan({ cls: 'tm-phase-warning-badge' });
+			warningBadge.textContent = `还有 ${daysToEnd} 天到期`;
+		}
 
 		// 右键菜单 - 细分阶段管理
 		track.addEventListener('contextmenu', (e) => {

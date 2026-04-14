@@ -634,7 +634,7 @@
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 4px 0;
+	padding: 4px 6px;
 	cursor: pointer;
 	border-radius: 6px;
 	transition: background 0.15s ease;
@@ -834,6 +834,7 @@
 	white-space: nowrap;
 	pointer-events: none;
 	opacity: 0.7;
+	z-index: 2;
 }
 
 /* === InlineTimeline 细分阶段容器 === */
@@ -1105,4 +1106,149 @@
 
 .tm-subdivision-editor-buttons button.mod-cta:hover {
 	opacity: 0.9;
+}
+
+/* ── Phase Ended Status ── */
+.tm-phase-ended-badge {
+	display: inline-flex;
+	align-items: center;
+	flex: 1;
+	justify-content: center;
+	padding: 2px 10px;
+	font-size: 11px;
+	color: var(--text-muted);
+	background: var(--background-modifier-hover);
+	border-radius: 10px;
+	opacity: 0.8;
+	white-space: nowrap;
+}
+
+.tm-timeline-row-ended {
+	opacity: 0.55;
+}
+
+.tm-timeline-row-ended-text {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 11px;
+	color: var(--text-muted);
+	background: var(--background-modifier-hover);
+	border-radius: 8px;
+	padding: 2px 8px;
+	margin: 0 8px;
+}
+
+/* ── Deadline Warning ── */
+.tm-phase-warning {
+	position: relative;
+	border-radius: 6px;
+	background: rgba(243, 156, 18, 0.05);
+}
+
+.tm-phase-warning::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border: 1.5px solid var(--color-orange);
+	border-radius: 6px;
+	pointer-events: none;
+	z-index: 0;
+}
+
+.tm-phase-warning-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 600;
+	color: #e67e22;
+	background: rgba(243, 156, 18, 0.12);
+	border-radius: 8px;
+	white-space: nowrap;
+	margin-left: 4px;
+	flex-shrink: 0;
+}
+
+.tm-timeline-row-warning {
+	background: rgba(243, 156, 18, 0.12);
+	border-radius: 4px;
+}
+
+.tm-timeline-row-warning-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 6px;
+	font-size: 10px;
+	font-weight: 600;
+	color: #e67e22;
+	background: rgba(243, 156, 18, 0.15);
+	border-radius: 6px;
+	white-space: nowrap;
+	margin-left: 4px;
+	flex-shrink: 0;
+}
+
+/* ── Task Priority ── */
+.tm-priority-container {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-right: 4px;
+	flex-shrink: 0;
+}
+
+.tm-priority-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 1.5px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 10px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	line-height: 1;
+}
+
+.tm-priority-btn:hover {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+	background: rgba(var(--interactive-accent-rgb), 0.08);
+}
+
+.tm-priority-btn.tm-priority-active {
+	border-color: var(--interactive-accent);
+	color: white;
+	background: var(--interactive-accent);
+}
+
+.tm-priority-btn.tm-priority-first {
+	border-color: #e67e22;
+	background: linear-gradient(135deg, #f39c12, #e67e22);
+	color: white;
+	box-shadow: 0 1px 3px rgba(243, 156, 18, 0.35);
+}
+
+.tm-priority-btn.tm-priority-first:hover {
+	box-shadow: 0 2px 6px rgba(243, 156, 18, 0.45);
+}
+
+/* 第一任务行高亮 */
+.tm-task-item.tm-priority-1 {
+	border-left: 3px solid #f39c12;
+	padding-left: 4px;
+	background: rgba(243, 156, 18, 0.04);
+}
+
+/* 第二任务行轻微标记 */
+.tm-task-item.tm-priority-2 {
+	border-left: 2px solid var(--interactive-accent);
+	padding-left: 5px;
 }

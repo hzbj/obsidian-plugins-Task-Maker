@@ -10,6 +10,7 @@ export class QuadrantCell {
 	el: HTMLElement;
 	private taskListEl: HTMLElement;
 	private countEl: HTMLElement;
+	private currentViewId: string = '';
 
 	constructor(
 		private container: HTMLElement,
@@ -39,14 +40,21 @@ export class QuadrantCell {
 	}
 
 	renderTasks(
+		viewId: string,
 		tasks: Task[],
 		collapsedIds: Set<string>,
 		onToggleCollapse: (taskId: string) => void
 	): void {
+		this.currentViewId = viewId;
 		this.taskListEl.empty();
 		this.countEl.textContent = `${tasks.length}`;
 
-		const forest = buildTaskForest(tasks);
+		const sorted = [...tasks].sort((a, b) => {
+			const pa = a.priorityAssignments[viewId] || 99;
+			const pb = b.priorityAssignments[viewId] || 99;
+			return pa - pb;
+		});
+		const forest = buildTaskForest(sorted);
 		for (const node of forest) {
 			this.renderNode(this.taskListEl, node, collapsedIds, onToggleCollapse);
 		}
@@ -75,7 +83,8 @@ export class QuadrantCell {
 				isCollapsed,
 				childCount,
 				onToggleCollapse: () => onToggleCollapse(node.task.id),
-			} : undefined
+			} : undefined,
+			this.currentViewId
 		);
 
 		if (hasChildren && !isCollapsed) {
