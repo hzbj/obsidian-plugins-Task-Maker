@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	triggerTags: ['task', 'todo'],
 	tagNamespace: 'T',
 	phases: [],
+	phaseGroups: [],
 	ui: {
 		quadrantLabels: {
 			ui: '紧急且重要',

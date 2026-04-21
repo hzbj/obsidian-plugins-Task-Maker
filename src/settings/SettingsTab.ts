@@ -65,6 +65,7 @@ export class SettingsTab extends PluginSettingTab {
 			);
 
 		this.renderPhaseList(containerEl, settings);
+		this.renderPhaseGroupList(containerEl, settings);
 
 		// ─── 时间轴设置 ───
 		containerEl.createEl('h2', { text: '时间轴设置' });
@@ -298,6 +299,66 @@ export class SettingsTab extends PluginSettingTab {
 			.addTextArea(text => text
 				.setPlaceholder('阶段描述（可选）')
 				.onChange(value => { newDesc = value; })
+			);
+	}
+
+	private renderPhaseGroupList(containerEl: HTMLElement, settings: PluginSettings): void {
+		containerEl.createEl('h3', { text: '阶段分组管理' });
+
+		const listEl = containerEl.createDiv({ cls: 'tm-settings-phase-group-list' });
+
+		for (let i = 0; i < settings.phaseGroups.length; i++) {
+			const group = settings.phaseGroups[i];
+			const groupEl = listEl.createDiv({ cls: 'tm-settings-phase-group-item' });
+
+			new Setting(groupEl)
+				.setName(group.label)
+				.addText(text => text
+					.setValue(group.label)
+					.onChange(async (value) => {
+						group.label = value.trim() || group.label;
+						await this.plugin.saveSettings();
+					})
+				)
+				.addButton(btn => btn
+					.setButtonText('删除')
+					.setWarning()
+					.onClick(async () => {
+						settings.phaseGroups.splice(i, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+				);
+		}
+
+		// Add new group
+		const addEl = containerEl.createDiv({ cls: 'tm-settings-add-phase-group' });
+		let newGroupLabel = '';
+
+		new Setting(addEl)
+			.setName('添加新分组')
+			.addText(text => text
+				.setPlaceholder('分组名称')
+				.onChange(value => { newGroupLabel = value.trim(); })
+			)
+			.addButton(btn => btn
+				.setButtonText('添加')
+				.setCta()
+				.onClick(async () => {
+					if (!newGroupLabel) {
+						new Notice('请输入分组名称');
+						return;
+					}
+					const newGroup = {
+						id: Date.now().toString(36),
+						label: newGroupLabel,
+						order: settings.phaseGroups.length,
+						phaseIds: [],
+					};
+					settings.phaseGroups.push(newGroup);
+					await this.plugin.saveSettings();
+					this.display();
+				})
 			);
 	}
 

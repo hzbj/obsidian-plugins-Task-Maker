@@ -42,9 +42,32 @@ export class TimelineOverview {
 		this.bodyEl = this.el.createDiv({ cls: 'tm-timeline-body' });
 
 		// Filter phases with valid timePeriod (excluding archived phases)
+		const today = new Date();
+		const deadlineWarningDays = this.getSettings().ui.deadlineWarningDays || 7;
+
+		const getSortWeight = (phase: PhaseDefinition): number => {
+			const priority = Number(phase.priority) || 999;
+			if (priority === 1) return 0;  // 第一阶段
+
+			if (phase.timePeriod?.end) {
+				const end = this.parseDate(phase.timePeriod.end);
+				if (end) {
+					const daysToEnd = this.daysBetween(today, end);
+					if (daysToEnd < 0) return 3;           // 已结束
+					if (daysToEnd <= deadlineWarningDays) return 1;  // 即将到期
+				}
+			}
+			return 2;  // 普通阶段
+		};
+
 		const validPhases = phases
 			.filter(p => !p.archived && p.timePeriod && this.parseDate(p.timePeriod.start) && this.parseDate(p.timePeriod.end))
-			.sort((a, b) => a.order - b.order);
+			.sort((a, b) => {
+				const wa = getSortWeight(a);
+				const wb = getSortWeight(b);
+				if (wa !== wb) return wa - wb;
+				return a.order - b.order;
+			});
 
 		if (validPhases.length === 0) {
 			this.renderEmpty();
@@ -75,7 +98,6 @@ export class TimelineOverview {
 		}
 
 		// Today percentage (shared across all rows)
-		const today = new Date();
 		today.setHours(0, 0, 0, 0);
 		const todayPct = totalDays > 0
 			? (this.daysBetween(projectStart, today) / totalDays) * 100

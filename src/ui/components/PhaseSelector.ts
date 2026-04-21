@@ -1,4 +1,4 @@
-import { PhaseDefinition, PriorityLevel } from '../../models/types';
+import { PhaseDefinition, PriorityLevel, PluginSettings } from '../../models/types';
 import { EventBus } from '../../services/EventBus';
 import { ViewRegistryService } from '../../services/ViewRegistryService';
 import { Menu } from 'obsidian';
@@ -13,6 +13,7 @@ export class PhaseSelector {
 		private eventBus: EventBus,
 		private getPhases: () => PhaseDefinition[],
 		private savePhases: () => Promise<void>,
+		private getSettings: () => PluginSettings,
 		private onArchivePhase?: (phaseId: string) => void,
 		private onDeletePhase?: (phaseId: string) => void
 	) {
@@ -32,72 +33,197 @@ export class PhaseSelector {
 			return;
 		}
 
+		const settings = this.getSettings();
+		const phaseGroups = [...settings.phaseGroups].sort((a, b) => a.order - b.order);
 		const phaseDefinitions = this.getPhases();
 
-		for (const phase of phases) {
-			const phaseDef = phaseDefinitions.find(p => p.id === phase.id);
-			const btn = this.el.createEl('button', {
-				cls: 'tm-phase-btn',
-				text: phase.label,
-			});
-			btn.dataset.viewId = phase.id;
-			if (phase.id === this.currentViewId) {
-				btn.classList.add('tm-phase-btn-active');
+		// Track which phases are already in groups
+		const groupedPhaseIds = new Set<string>();
+		for (const group of phaseGroups) {
+			for (const pid of group.phaseIds) {
+				groupedPhaseIds.add(pid);
 			}
-			// Add priority visual indicators
-			// 确保 priority 是数字类型进行比较
-			const priorityNum = typeof phaseDef?.priority === 'number' ? phaseDef.priority : parseInt(phaseDef?.priority as unknown as string, 10);
-			if (priorityNum === 1) {
-				btn.classList.add('tm-phase-btn-priority-1');
-			}
-			if (priorityNum === 2) {
-				btn.classList.add('tm-phase-btn-priority-2');
-			}
-			btn.addEventListener('click', () => {
-				this.eventBus.emit('view-switched', { viewId: phase.id, viewType: 'phase' });
-			});
-
-			btn.addEventListener('contextmenu', (e) => {
-				e.preventDefault();
-				const menu = new Menu();
-
-				// Priority submenu
-				// 确保 priority 是数字类型进行比较
-				const currentPriorityRaw = phaseDef?.priority;
-				const currentPriority = typeof currentPriorityRaw === 'number' ? currentPriorityRaw : parseInt(currentPriorityRaw as unknown as string, 10);
-				menu.addItem(item => item
-					.setTitle(`设为第一阶段${currentPriority === 1 ? ' ✓' : ''}`)
-					.setIcon('star')
-					.onClick(async () => {
-						await this.setPhasePriority(phase.id, currentPriority === 1 ? undefined : 1);
-					}));
-
-				menu.addItem(item => item
-					.setTitle(`设为第二阶段${currentPriority === 2 ? ' ✓' : ''}`)
-					.setIcon('bookmark')
-					.onClick(async () => {
-						await this.setPhasePriority(phase.id, currentPriority === 2 ? undefined : 2);
-					}));
-
-				menu.addSeparator();
-
-				if (this.onArchivePhase) {
-					menu.addItem(item => item
-						.setTitle('归档阶段')
-						.setIcon('archive')
-						.onClick(() => this.onArchivePhase!(phase.id))
-					);
-				}
-				if (this.onDeletePhase) {
-					menu.addItem(item => item
-						.setTitle('删除阶段')
-						.setIcon('trash')
-						.onClick(() => this.onDeletePhase!(phase.id))
-					);
-				}
-				menu.showAtMouseEvent(e);
-			});
 		}
+
+		// Render groups
+		for (const group of phaseGroups) {
+			const groupEl = this.el.createDiv({ cls: 'tm-phase-group' });
+			groupEl.dataset.groupId = group.id;
+
+			const titleEl = groupEl.createDiv({ cls: 'tm-phase-group-title', text: group.label });
+			titleEl.draggable = true;
+			titleEl.addEventListener('dragstart', (e) => {
+				e.dataTransfer?.setData('text/plain', `group:${group.id}`);
+				e.dataTransfer!.effectAllowed = 'move';
+			});
+
+			this.setupGroupDropZone(groupEl, group.id);
+
+			for (const phaseId of group.phaseIds) {
+				const phase = phases.find(p => p.id === phaseId);
+				if (phase) {
+					this.renderPhaseButton(phase, phaseDefinitions, groupEl);
+				}
+			}
+		}
+
+		// Render ungrouped phases directly (no group container)
+		const ungroupedPhases = phases.filter(p => !groupedPhaseIds.has(p.id));
+		for (const phase of ungroupedPhases) {
+			this.renderPhaseButton(phase, phaseDefinitions, this.el);
+		}
+
+		// Setup ungrouped drop zone on the selector itself
+		this.el.addEventListener('dragover', (e) => {
+			const groupEl = (e.target as HTMLElement).closest('.tm-phase-group');
+			if (!groupEl) {
+				e.preventDefault();
+				e.dataTransfer!.dropEffect = 'move';
+			}
+		});
+		this.el.addEventListener('drop', async (e) => {
+			const groupEl = (e.target as HTMLElement).closest('.tm-phase-group');
+			if (groupEl) return;
+			e.preventDefault();
+			const data = e.dataTransfer?.getData('text/plain');
+			if (data?.startsWith('phase:')) {
+				const phaseId = data.slice(6);
+				await this.movePhaseToGroup(phaseId, null);
+			}
+		});
+	}
+
+	private renderPhaseButton(phase: { id: string; label: string }, phaseDefinitions: PhaseDefinition[], container: HTMLElement): HTMLElement {
+		const phaseDef = phaseDefinitions.find(p => p.id === phase.id);
+		const btn = container.createEl('button', {
+			cls: 'tm-phase-btn',
+			text: phase.label,
+		});
+		btn.dataset.viewId = phase.id;
+		btn.draggable = true;
+		if (phase.id === this.currentViewId) {
+			btn.classList.add('tm-phase-btn-active');
+		}
+		// Add priority visual indicators
+		// 确保 priority 是数字类型进行比较
+		const priorityNum = typeof phaseDef?.priority === 'number' ? phaseDef.priority : parseInt(phaseDef?.priority as unknown as string, 10);
+		if (priorityNum === 1) {
+			btn.classList.add('tm-phase-btn-priority-1');
+		}
+		btn.addEventListener('click', () => {
+			this.eventBus.emit('view-switched', { viewId: phase.id, viewType: 'phase' });
+		});
+
+		btn.addEventListener('dragstart', (e) => {
+			e.dataTransfer?.setData('text/plain', `phase:${phase.id}`);
+			e.dataTransfer!.effectAllowed = 'move';
+		});
+
+		btn.addEventListener('contextmenu', (e) => {
+			e.preventDefault();
+			const menu = new Menu();
+
+			// Priority submenu
+			// 确保 priority 是数字类型进行比较
+			const currentPriorityRaw = phaseDef?.priority;
+			const currentPriority = typeof currentPriorityRaw === 'number' ? currentPriorityRaw : parseInt(currentPriorityRaw as unknown as string, 10);
+			menu.addItem(item => item
+				.setTitle(`设为第一阶段${currentPriority === 1 ? ' ✓' : ''}`)
+				.setIcon('star')
+				.onClick(async () => {
+					await this.setPhasePriority(phase.id, currentPriority === 1 ? undefined : 1);
+				}));
+
+			menu.addSeparator();
+
+			if (this.onArchivePhase) {
+				menu.addItem(item => item
+					.setTitle('归档阶段')
+					.setIcon('archive')
+					.onClick(() => this.onArchivePhase!(phase.id))
+				);
+			}
+			if (this.onDeletePhase) {
+				menu.addItem(item => item
+					.setTitle('删除阶段')
+					.setIcon('trash')
+					.onClick(() => this.onDeletePhase!(phase.id))
+				);
+			}
+			menu.showAtMouseEvent(e);
+		});
+
+		return btn;
+	}
+
+	private setupGroupDropZone(groupEl: HTMLElement, groupId: string): void {
+		groupEl.addEventListener('dragover', (e) => {
+			e.preventDefault();
+			e.dataTransfer!.dropEffect = 'move';
+			groupEl.classList.add('tm-phase-group-drop-active');
+		});
+
+		groupEl.addEventListener('dragleave', () => {
+			groupEl.classList.remove('tm-phase-group-drop-active');
+		});
+
+		groupEl.addEventListener('drop', async (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			groupEl.classList.remove('tm-phase-group-drop-active');
+			const data = e.dataTransfer?.getData('text/plain');
+			if (!data) return;
+
+			if (data.startsWith('phase:')) {
+				const phaseId = data.slice(6);
+				await this.movePhaseToGroup(phaseId, groupId);
+			} else if (data.startsWith('group:')) {
+				const draggedGroupId = data.slice(6);
+				if (draggedGroupId !== groupId) {
+					await this.reorderGroups(draggedGroupId, groupId);
+				}
+			}
+		});
+	}
+
+	private async movePhaseToGroup(phaseId: string, targetGroupId: string | null): Promise<void> {
+		const settings = this.getSettings();
+
+		// Remove from all groups
+		for (const group of settings.phaseGroups) {
+			const idx = group.phaseIds.indexOf(phaseId);
+			if (idx !== -1) {
+				group.phaseIds.splice(idx, 1);
+			}
+		}
+
+		// Add to target group
+		if (targetGroupId) {
+			const targetGroup = settings.phaseGroups.find(g => g.id === targetGroupId);
+			if (targetGroup) {
+				targetGroup.phaseIds.push(phaseId);
+			}
+		}
+
+		await this.savePhases();
+		this.refresh();
+	}
+
+	private async reorderGroups(draggedGroupId: string, targetGroupId: string): Promise<void> {
+		const settings = this.getSettings();
+		const groups = settings.phaseGroups;
+		const draggedIdx = groups.findIndex(g => g.id === draggedGroupId);
+		const targetIdx = groups.findIndex(g => g.id === targetGroupId);
+		if (draggedIdx === -1 || targetIdx === -1) return;
+
+		const [dragged] = groups.splice(draggedIdx, 1);
+		groups.splice(targetIdx, 0, dragged);
+
+		// Recalculate orders
+		groups.forEach((g, i) => { g.order = i; });
+
+		await this.savePhases();
+		this.refresh();
 	}
 
 	setCurrentPhase(viewId: string): void {

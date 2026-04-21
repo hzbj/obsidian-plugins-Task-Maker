@@ -138,6 +138,7 @@ export class MatrixView extends ItemView {
 			this.eventBus,
 			() => this.getSettings().phases,
 			async () => { await this.saveSettings?.(); },
+			this.getSettings,
 			this.onAddPhaseToNote
 				? () => {
 					const activeFile = this.app.workspace.getActiveFile();

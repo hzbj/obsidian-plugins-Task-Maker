@@ -1184,7 +1184,34 @@
 	font-weight: 600;
 }
 
-.tm-phase-btn.tm-phase-btn-priority-2 {
-	border-color: var(--interactive-accent);
-	background: rgba(var(--interactive-accent-rgb), 0.08);
+/* ── Phase Groups ── */
+
+/* 阶段分组容器 */
+.tm-phase-group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	margin-bottom: 4px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
 }
+
+/* 分组标题 */
+.tm-phase-group-title {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	margin-right: 6px;
+	cursor: grab;
+	user-select: none;
+}
+
+/* 拖拽进入分组时的视觉反馈 */
+.tm-phase-group-drop-active {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+

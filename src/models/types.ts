@@ -75,12 +75,20 @@ export interface PhaseDefinition {
 	archived?: boolean;
 }
 
+export interface PhaseGroup {
+	id: string;
+	label: string;
+	order: number;
+	phaseIds: string[];
+}
+
 // ============ Settings ============
 
 export interface PluginSettings {
 	triggerTags: string[];
 	tagNamespace: string;
 	phases: PhaseDefinition[];
+	phaseGroups: PhaseGroup[];
 	ui: {
 		quadrantLabels: Record<QuadrantCode, string>;
 		quadrantColors: Record<QuadrantCode, string>;

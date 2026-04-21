@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, Menu } from 'obsidian';
 import { Task, PluginSettings } from '../../models/types';
 import { TagManagerService } from '../../services/TagManagerService';
 import { EventBus } from '../../services/EventBus';
@@ -31,6 +31,20 @@ export class TaskItem {
 		}
 		this.render();
 		this.dragDropManager.setupDraggable(this.el, task.id);
+
+		// 右键菜单：复制任务内容
+		this.el.addEventListener('contextmenu', (e) => {
+			e.preventDefault();
+			const menu = new Menu();
+			menu.addItem(item => {
+				item.setTitle('复制任务内容');
+				item.setIcon('copy');
+				item.onClick(() => {
+					navigator.clipboard.writeText(this.task.text);
+				});
+			});
+			menu.showAtMouseEvent(e);
+		});
 	}
 
 	private render(): void {
