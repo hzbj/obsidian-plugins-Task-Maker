@@ -3,6 +3,7 @@ import { PluginSettings, PhaseDefinition, ArchiveCategoryDef, SubdivisionUnit } 
 import { ViewRegistryService } from '../services/ViewRegistryService';
 import { EventBus } from '../services/EventBus';
 import { CreatePhaseModal } from '../ui/components/CreatePhaseModal';
+import { RestoreArchiveModal } from '../ui/components/RestoreArchiveModal';
 import type TaskMakerPlugin from '../main';
 
 export class SettingsTab extends PluginSettingTab {
@@ -173,6 +174,32 @@ export class SettingsTab extends PluginSettingTab {
 
 		this.renderArchiveCategories(containerEl, settings);
 
+		// Archived phases management
+		const archivedPhases = settings.phases.filter(p => p.archived === true);
+		if (archivedPhases.length > 0) {
+			new Setting(containerEl)
+				.setName(`已归档阶段 (${archivedPhases.length})`)
+				.setDesc('查看和恢复已归档的项目阶段')
+				.addButton(btn => btn
+					.setButtonText('管理已归档阶段')
+					.onClick(() => {
+						new RestoreArchiveModal(
+							this.app,
+							archivedPhases,
+							settings.archiveCategories,
+							async (phaseId, targetPath) => {
+								const archiveService = (this.plugin as any).archiveService;
+								await archiveService.restorePhase(phaseId, targetPath);
+								const taskScanner = (this.plugin as any).taskScanner;
+								await taskScanner.fullScan();
+								await (this.plugin as any).reconcilePhaseNotes();
+								this.display(); // Refresh settings tab
+							}
+						).open();
+					})
+				);
+		}
+
 		// ─── Note Panel ───
 		containerEl.createEl('h2', { text: '笔记内容面板' });
 
@@ -232,12 +259,10 @@ export class SettingsTab extends PluginSettingTab {
 				.addButton(btn => btn
 					.setButtonText('删除')
 					.setWarning()
-					.onClick(async () => {
-						if (phase.autoDetected) {
-							new Notice('自动检测的阶段会在下次扫描时重新出现，除非移除笔记中的 phase frontmatter。');
-						}
-						await this.plugin.deletePhaseWithNotes(phase.id);
-						this.display();
+					.onClick(() => {
+						this.plugin.deletePhaseWithNotes(phase.id, () => {
+							this.display();
+						});
 					})
 				);
 

@@ -15,7 +15,8 @@ export class PhaseSelector {
 		private savePhases: () => Promise<void>,
 		private getSettings: () => PluginSettings,
 		private onArchivePhase?: (phaseId: string) => void,
-		private onDeletePhase?: (phaseId: string) => void
+		private onDeletePhase?: (phaseId: string) => void,
+		private onRestoreArchive?: () => void
 	) {
 		this.el = container.createDiv({ cls: 'tm-phase-selector' });
 		this.refresh();
@@ -91,6 +92,19 @@ export class PhaseSelector {
 				await this.movePhaseToGroup(phaseId, null);
 			}
 		});
+
+		// Archived phases entry button
+		const currentSettings = this.getSettings();
+		const archivedCount = currentSettings.phases.filter(p => p.archived === true).length;
+		if (archivedCount > 0 && this.onRestoreArchive) {
+			const archiveBtn = this.el.createEl('button', {
+				cls: 'tm-phase-btn tm-phase-archived-btn',
+				text: `已归档 (${archivedCount})`,
+			});
+			archiveBtn.addEventListener('click', () => {
+				this.onRestoreArchive!();
+			});
+		}
 	}
 
 	private renderPhaseButton(phase: { id: string; label: string }, phaseDefinitions: PhaseDefinition[], container: HTMLElement): HTMLElement {

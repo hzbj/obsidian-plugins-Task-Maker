@@ -52,7 +52,8 @@ export class MatrixView extends ItemView {
 		private onRescan?: () => Promise<void>,
 		private onArchivePhase?: (phaseId: string) => void,
 		private onDeletePhase?: (phaseId: string) => void,
-		private saveSettings?: () => Promise<void>
+		private saveSettings?: () => Promise<void>,
+		private onRestoreArchive?: () => void
 	) {
 		super(leaf);
 
@@ -197,7 +198,8 @@ export class MatrixView extends ItemView {
 				: undefined,
 			() => this.refresh(),
 			this.onArchivePhase,
-			this.onDeletePhase
+			this.onDeletePhase,
+			this.onRestoreArchive
 		);
 
 		// Scan button + progress (inside navigator's scan host)

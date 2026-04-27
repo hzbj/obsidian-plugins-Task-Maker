@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import { Plugin, WorkspaceLeaf, TFile, TFolder, Notice } from 'obsidian';
 import { PluginSettings, DetectedPhaseInfo, PhaseDefinition } from './models/types';
 import { VIEW_TYPE_MATRIX, DEFAULT_SETTINGS } from './models/constants';
 import { EventBus } from './services/EventBus';
@@ -9,6 +9,8 @@ import { ArchiveService } from './services/ArchiveService';
 import { MatrixView } from './ui/MatrixView';
 import { SettingsTab } from './settings/SettingsTab';
 import { ArchiveModal } from './ui/components/ArchiveModal';
+import { RestoreArchiveModal } from './ui/components/RestoreArchiveModal';
+import { DeletePhaseModal } from './ui/components/DeletePhaseModal';
 
 export default class TaskMakerPlugin extends Plugin {
 	settings: PluginSettings = DEFAULT_SETTINGS;
@@ -55,13 +57,11 @@ export default class TaskMakerPlugin extends Plugin {
 				(phaseId) => this.openArchiveModal(
 					this.settings.phases.find(p => p.id === phaseId)!
 				),
-				async (phaseId) => {
-					const notes = this.taskScanner.getPhaseNotes(phaseId);
-					await this.archiveService.deletePhase(phaseId, notes.map(n => n.filePath));
-					await this.taskScanner.fullScan();
-					await this.reconcilePhaseNotes();
+				(phaseId) => {
+					this.deletePhaseWithNotes(phaseId);
 				},
-				() => this.saveSettings()
+				() => this.saveSettings(),
+				() => this.openRestoreModal()
 			)
 		);
 
@@ -359,18 +359,40 @@ export default class TaskMakerPlugin extends Plugin {
 		const notes = this.taskScanner.getPhaseNotes(phase.id);
 		const noteFiles = notes.map(n => ({ filePath: n.filePath, fileName: n.fileName }));
 
+		// Collect unique parent folders from note files
+		const folderMap = new Map<string, number>();
+		for (const note of notes) {
+			const lastSlash = note.filePath.lastIndexOf('/');
+			if (lastSlash > 0) {
+				const folderPath = note.filePath.substring(0, lastSlash);
+				folderMap.set(folderPath, (folderMap.get(folderPath) || 0) + 1);
+			}
+		}
+		const parentFolders = Array.from(folderMap.entries())
+			.filter(([path]) => {
+				const folder = this.app.vault.getAbstractFileByPath(path);
+				return folder instanceof TFolder;
+			})
+			.map(([path, count]) => ({
+				folderPath: path,
+				folderName: path.split('/').pop() || path,
+				fileCount: count,
+			}));
+
 		new ArchiveModal(
 			this.app,
 			phase.label,
 			this.settings.archiveCategories,
 			noteFiles,
+			parentFolders,
 			(code, label) => this.archiveService.buildArchiveFolderName(code, label),
-			async (categoryCode, selectedFiles) => {
+			async (categoryCode, selectedFiles, selectedFolders) => {
 				await this.archiveService.archivePhase(
 					phase.id,
 					categoryCode,
 					phase.label,
-					selectedFiles
+					selectedFiles,
+					selectedFolders
 				);
 				await this.taskScanner.fullScan();
 				await this.reconcilePhaseNotes();
@@ -378,11 +400,60 @@ export default class TaskMakerPlugin extends Plugin {
 		).open();
 	}
 
-	async deletePhaseWithNotes(phaseId: string): Promise<void> {
-		const notes = this.taskScanner.getPhaseNotes(phaseId);
-		await this.archiveService.deletePhase(phaseId, notes.map(n => n.filePath));
-		await this.taskScanner.fullScan();
-		await this.reconcilePhaseNotes();
+	openRestoreModal(): void {
+		const archivedPhases = this.archiveService.getArchivedPhases();
+		new RestoreArchiveModal(
+			this.app,
+			archivedPhases,
+			this.settings.archiveCategories,
+			async (phaseId, targetPath) => {
+				await this.archiveService.restorePhase(phaseId, targetPath);
+				await this.taskScanner.fullScan();
+				await this.reconcilePhaseNotes();
+			}
+		).open();
+	}
+
+	deletePhaseWithNotes(phaseId: string, onComplete?: () => void): void {
+		const phase = this.settings.phases.find(p => p.id === phaseId);
+		if (!phase) return;
+
+		const notes = this.taskScanner.getPhaseNotes(phase.id);
+		const noteFiles = notes.map(n => ({ filePath: n.filePath, fileName: n.fileName }));
+
+		// Collect unique parent folders
+		const folderMap = new Map<string, number>();
+		for (const note of notes) {
+			const lastSlash = note.filePath.lastIndexOf('/');
+			if (lastSlash > 0) {
+				const folderPath = note.filePath.substring(0, lastSlash);
+				folderMap.set(folderPath, (folderMap.get(folderPath) || 0) + 1);
+			}
+		}
+		const parentFolders = Array.from(folderMap.entries())
+			.filter(([path]) => {
+				const folder = this.app.vault.getAbstractFileByPath(path);
+				return folder instanceof TFolder;
+			})
+			.map(([path, count]) => ({
+				folderPath: path,
+				folderName: path.split('/').pop() || path,
+				fileCount: count,
+			}));
+
+		new DeletePhaseModal(
+			this.app,
+			phase.label,
+			phase.autoDetected === true,
+			noteFiles,
+			parentFolders,
+			async (selectedFiles, selectedFolders) => {
+				await this.archiveService.deletePhase(phase.id, selectedFiles, selectedFolders);
+				await this.taskScanner.fullScan();
+				await this.reconcilePhaseNotes();
+				onComplete?.();
+			}
+		).open();
 	}
 
 	private waitForMetadataCache(filePath: string): Promise<void> {

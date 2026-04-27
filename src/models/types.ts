@@ -61,6 +61,12 @@ export interface ViewDefinition {
 	notePattern?: string;
 }
 
+export interface ArchivedItem {
+	type: 'file' | 'folder';
+	originalPath: string;
+	archivedPath: string;
+}
+
 export interface PhaseDefinition {
 	id: string;
 	label: string;
@@ -73,6 +79,13 @@ export interface PhaseDefinition {
 	customSubdivisions?: PhaseSubdivision[];
 	priority?: number;
 	archived?: boolean;
+	archiveInfo?: {
+		archivePath: string;
+		categoryCode: string;
+		archivedAt: string;
+		originalPaths: string[];
+		archivedItems: ArchivedItem[];
+	};
 }
 
 export interface PhaseGroup {
@@ -121,6 +134,7 @@ export interface EventMap {
 	'phases-synced': { added: string[]; updated: string[]; removed: string[] };
 	'timeline-toggled': { active: boolean };
 	'phase-archived': { phaseId: string; archivePath: string };
+	'phase-restored': { phaseId: string; restoredPaths: string[] };
 	'phase-deleted': { phaseId: string };
 }
 

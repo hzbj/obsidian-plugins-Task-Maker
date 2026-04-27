@@ -1,21 +1,17 @@
 import { App, Modal, Setting, Notice } from 'obsidian';
-import { ArchiveCategoryDef } from '../../models/types';
 
-export class ArchiveModal extends Modal {
-	private selectedCategory = '';
+export class DeletePhaseModal extends Modal {
 	private selectedFiles: Set<string> = new Set();
 	private selectedFolders: Set<string> = new Set();
 	private fileCheckboxes: Map<string, HTMLInputElement> = new Map();
-	private previewEl: HTMLElement | null = null;
 
 	constructor(
 		app: App,
 		private phaseLabel: string,
-		private categories: ArchiveCategoryDef[],
+		private isAutoDetected: boolean,
 		private noteFiles: { filePath: string; fileName: string }[],
 		private parentFolders: { folderPath: string; folderName: string; fileCount: number }[],
-		private buildFolderName: (categoryCode: string, phaseLabel: string) => string,
-		private onSubmit: (categoryCode: string, selectedFiles: string[], selectedFolders: string[]) => void
+		private onConfirm: (selectedFiles: string[], selectedFolders: string[]) => void
 	) {
 		super(app);
 	}
@@ -23,37 +19,21 @@ export class ArchiveModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass('tm-archive-modal');
+		contentEl.addClass('tm-delete-modal');
 
-		contentEl.createEl('h3', { text: `归档阶段: ${this.phaseLabel}` });
+		contentEl.createEl('h3', { text: `删除阶段: ${this.phaseLabel}` });
 
-		// Project name (read-only, from phase-label)
-		new Setting(contentEl)
-			.setName('项目名称')
-			.setDesc('取自阶段的显示名称')
-			.addText(text => text
-				.setValue(this.phaseLabel)
-				.setDisabled(true)
-			);
-
-		// Category selection
-		new Setting(contentEl)
-			.setName('归档分类')
-			.setDesc('选择归档分类')
-			.addDropdown(dropdown => {
-				dropdown.addOption('', '-- 请选择分类 --');
-				for (const cat of this.categories) {
-					dropdown.addOption(cat.code, `${cat.code} - ${cat.label}`);
-				}
-				dropdown.onChange(value => {
-					this.selectedCategory = value;
-					this.updatePreview();
-				});
+		if (this.isAutoDetected) {
+			contentEl.createEl('p', {
+				text: '⚠️ 自动检测的阶段会在下次扫描时重新出现，除非移除笔记中的 phase frontmatter。',
+				cls: 'tm-delete-warning',
 			});
+		}
 
-		// Archive path preview
-		this.previewEl = contentEl.createDiv({ cls: 'tm-archive-preview' });
-		this.previewEl.setText('请选择分类以预览归档路径');
+		contentEl.createEl('p', {
+			text: '删除的文件将被移到回收站，可以从回收站中恢复。',
+			cls: 'setting-item-description',
+		});
 
 		// Folder selection
 		if (this.parentFolders.length > 0) {
@@ -68,11 +48,9 @@ export class ArchiveModal extends Modal {
 				checkbox.addEventListener('change', () => {
 					if (checkbox.checked) {
 						this.selectedFolders.add(folder.folderPath);
-						// Auto-check and disable files belonging to this folder
 						this.updateFileCheckboxesForFolder(folder.folderPath, true);
 					} else {
 						this.selectedFolders.delete(folder.folderPath);
-						// Re-enable files belonging to this folder
 						this.updateFileCheckboxesForFolder(folder.folderPath, false);
 					}
 				});
@@ -115,24 +93,14 @@ export class ArchiveModal extends Modal {
 		// Buttons
 		new Setting(contentEl)
 			.addButton(btn => btn
-				.setButtonText('确认归档')
-				.setCta()
+				.setButtonText('确认删除')
+				.setWarning()
 				.onClick(() => this.handleSubmit())
 			)
 			.addButton(btn => btn
 				.setButtonText('取消')
 				.onClick(() => this.close())
 			);
-	}
-
-	private updatePreview(): void {
-		if (!this.previewEl) return;
-		if (!this.selectedCategory) {
-			this.previewEl.setText('请选择分类以预览归档路径');
-			return;
-		}
-		const folderName = this.buildFolderName(this.selectedCategory, this.phaseLabel);
-		this.previewEl.setText(`归档路径: ${folderName}/`);
 	}
 
 	private updateFileCheckboxesForFolder(folderPath: string, folderSelected: boolean): void {
@@ -147,7 +115,6 @@ export class ArchiveModal extends Modal {
 						this.selectedFiles.add(note.filePath);
 					} else {
 						cb.disabled = false;
-						// Keep checked state, user can uncheck manually
 					}
 				}
 			}
@@ -155,15 +122,7 @@ export class ArchiveModal extends Modal {
 	}
 
 	private handleSubmit(): void {
-		if (!this.selectedCategory) {
-			new Notice('请选择归档分类');
-			return;
-		}
-		if (this.selectedFiles.size === 0 && this.noteFiles.length > 0 && this.selectedFolders.size === 0) {
-			new Notice('请至少选择一个笔记文件或文件夹');
-			return;
-		}
-		this.onSubmit(this.selectedCategory, Array.from(this.selectedFiles), Array.from(this.selectedFolders));
+		this.onConfirm(Array.from(this.selectedFiles), Array.from(this.selectedFolders));
 		this.close();
 	}
 
