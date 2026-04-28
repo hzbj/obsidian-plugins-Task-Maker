@@ -3317,7 +3317,32 @@ var ArchiveModal = class extends import_obsidian12.Modal {
             this.updateFileCheckboxesForFolder(folder.folderPath, false);
           }
         });
-        label.createSpan({ text: ` \u{1F4C1} ${folder.folderName} (${folder.fileCount} \u4E2A\u6587\u4EF6)` });
+        label.createSpan({ text: ` \u{1F4C1} ${folder.folderName} (${folder.fileCount} \u4E2A\u9636\u6BB5\u6587\u4EF6)` });
+        if (folder.otherFiles.length > 0) {
+          const otherToggle = itemEl.createEl("div", { cls: "tm-other-files-toggle" });
+          otherToggle.setText(`\u25B6 \u5176\u4ED6\u6587\u4EF6 (${folder.otherFiles.length})`);
+          const otherContainer = itemEl.createDiv({ cls: "tm-other-files-container" });
+          otherContainer.style.display = "none";
+          otherToggle.addEventListener("click", () => {
+            const isHidden = otherContainer.style.display === "none";
+            otherContainer.style.display = isHidden ? "block" : "none";
+            otherToggle.setText(`${isHidden ? "\u25BC" : "\u25B6"} \u5176\u4ED6\u6587\u4EF6 (${folder.otherFiles.length})`);
+          });
+          for (const otherFile of folder.otherFiles) {
+            const otherItemEl = otherContainer.createDiv({ cls: "tm-other-file-item" });
+            const otherLabel = otherItemEl.createEl("label");
+            const otherCb = otherLabel.createEl("input", { type: "checkbox" });
+            this.fileCheckboxes.set(otherFile.filePath, otherCb);
+            otherCb.addEventListener("change", () => {
+              if (otherCb.checked) {
+                this.selectedFiles.add(otherFile.filePath);
+              } else {
+                this.selectedFiles.delete(otherFile.filePath);
+              }
+            });
+            otherLabel.createSpan({ text: ` ${otherFile.fileName}` });
+          }
+        }
       }
     }
     if (this.noteFiles.length > 0) {
@@ -3371,6 +3396,21 @@ var ArchiveModal = class extends import_obsidian12.Modal {
             cb.checked = true;
             cb.disabled = true;
             this.selectedFiles.add(note.filePath);
+          } else {
+            cb.disabled = false;
+          }
+        }
+      }
+    }
+    const folder = this.parentFolders.find((f) => f.folderPath === folderPath);
+    if (folder) {
+      for (const otherFile of folder.otherFiles) {
+        const cb = this.fileCheckboxes.get(otherFile.filePath);
+        if (cb) {
+          if (folderSelected) {
+            cb.checked = true;
+            cb.disabled = true;
+            this.selectedFiles.add(otherFile.filePath);
           } else {
             cb.disabled = false;
           }
@@ -3440,7 +3480,32 @@ var DeletePhaseModal = class extends import_obsidian13.Modal {
             this.updateFileCheckboxesForFolder(folder.folderPath, false);
           }
         });
-        label.createSpan({ text: ` \u{1F4C1} ${folder.folderName} (${folder.fileCount} \u4E2A\u6587\u4EF6)` });
+        label.createSpan({ text: ` \u{1F4C1} ${folder.folderName} (${folder.fileCount} \u4E2A\u9636\u6BB5\u6587\u4EF6)` });
+        if (folder.otherFiles.length > 0) {
+          const otherToggle = itemEl.createEl("div", { cls: "tm-other-files-toggle" });
+          otherToggle.setText(`\u25B6 \u5176\u4ED6\u6587\u4EF6 (${folder.otherFiles.length})`);
+          const otherContainer = itemEl.createDiv({ cls: "tm-other-files-container" });
+          otherContainer.style.display = "none";
+          otherToggle.addEventListener("click", () => {
+            const isHidden = otherContainer.style.display === "none";
+            otherContainer.style.display = isHidden ? "block" : "none";
+            otherToggle.setText(`${isHidden ? "\u25BC" : "\u25B6"} \u5176\u4ED6\u6587\u4EF6 (${folder.otherFiles.length})`);
+          });
+          for (const otherFile of folder.otherFiles) {
+            const otherItemEl = otherContainer.createDiv({ cls: "tm-other-file-item" });
+            const otherLabel = otherItemEl.createEl("label");
+            const otherCb = otherLabel.createEl("input", { type: "checkbox" });
+            this.fileCheckboxes.set(otherFile.filePath, otherCb);
+            otherCb.addEventListener("change", () => {
+              if (otherCb.checked) {
+                this.selectedFiles.add(otherFile.filePath);
+              } else {
+                this.selectedFiles.delete(otherFile.filePath);
+              }
+            });
+            otherLabel.createSpan({ text: ` ${otherFile.fileName}` });
+          }
+        }
       }
     }
     if (this.noteFiles.length > 0) {
@@ -3484,6 +3549,21 @@ var DeletePhaseModal = class extends import_obsidian13.Modal {
             cb.checked = true;
             cb.disabled = true;
             this.selectedFiles.add(note.filePath);
+          } else {
+            cb.disabled = false;
+          }
+        }
+      }
+    }
+    const folder = this.parentFolders.find((f) => f.folderPath === folderPath);
+    if (folder) {
+      for (const otherFile of folder.otherFiles) {
+        const cb = this.fileCheckboxes.get(otherFile.filePath);
+        if (cb) {
+          if (folderSelected) {
+            cb.checked = true;
+            cb.disabled = true;
+            this.selectedFiles.add(otherFile.filePath);
           } else {
             cb.disabled = false;
           }
@@ -3819,11 +3899,29 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
     const parentFolders = Array.from(folderMap.entries()).filter(([path]) => {
       const folder = this.app.vault.getAbstractFileByPath(path);
       return folder instanceof import_obsidian14.TFolder;
-    }).map(([path, count]) => ({
-      folderPath: path,
-      folderName: path.split("/").pop() || path,
-      fileCount: count
-    }));
+    }).map(([path, count]) => {
+      const folder = this.app.vault.getAbstractFileByPath(path);
+      const otherFiles = [];
+      if (folder && folder.children) {
+        for (const child of folder.children) {
+          if (child instanceof import_obsidian14.TFile && child.extension === "md") {
+            const isCurrentPhase = noteFiles.some((n) => n.filePath === child.path);
+            if (!isCurrentPhase) {
+              otherFiles.push({
+                filePath: child.path,
+                fileName: child.basename
+              });
+            }
+          }
+        }
+      }
+      return {
+        folderPath: path,
+        folderName: path.split("/").pop() || path,
+        fileCount: count,
+        otherFiles
+      };
+    });
     new ArchiveModal(
       this.app,
       phase.label,
@@ -3874,11 +3972,29 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
     const parentFolders = Array.from(folderMap.entries()).filter(([path]) => {
       const folder = this.app.vault.getAbstractFileByPath(path);
       return folder instanceof import_obsidian14.TFolder;
-    }).map(([path, count]) => ({
-      folderPath: path,
-      folderName: path.split("/").pop() || path,
-      fileCount: count
-    }));
+    }).map(([path, count]) => {
+      const folder = this.app.vault.getAbstractFileByPath(path);
+      const otherFiles = [];
+      if (folder && folder.children) {
+        for (const child of folder.children) {
+          if (child instanceof import_obsidian14.TFile && child.extension === "md") {
+            const isCurrentPhase = noteFiles.some((n) => n.filePath === child.path);
+            if (!isCurrentPhase) {
+              otherFiles.push({
+                filePath: child.path,
+                fileName: child.basename
+              });
+            }
+          }
+        }
+      }
+      return {
+        folderPath: path,
+        folderName: path.split("/").pop() || path,
+        fileCount: count,
+        otherFiles
+      };
+    });
     new DeletePhaseModal(
       this.app,
       phase.label,

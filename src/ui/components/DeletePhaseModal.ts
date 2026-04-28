@@ -10,7 +10,7 @@ export class DeletePhaseModal extends Modal {
 		private phaseLabel: string,
 		private isAutoDetected: boolean,
 		private noteFiles: { filePath: string; fileName: string }[],
-		private parentFolders: { folderPath: string; folderName: string; fileCount: number }[],
+		private parentFolders: { folderPath: string; folderName: string; fileCount: number; otherFiles: { filePath: string; fileName: string }[] }[],
 		private onConfirm: (selectedFiles: string[], selectedFolders: string[]) => void
 	) {
 		super(app);
@@ -55,7 +55,39 @@ export class DeletePhaseModal extends Modal {
 					}
 				});
 
-				label.createSpan({ text: ` 📁 ${folder.folderName} (${folder.fileCount} 个文件)` });
+				label.createSpan({ text: ` 📁 ${folder.folderName} (${folder.fileCount} 个阶段文件)` });
+
+				// Other files in the same folder
+				if (folder.otherFiles.length > 0) {
+					const otherToggle = itemEl.createEl('div', { cls: 'tm-other-files-toggle' });
+					otherToggle.setText(`▶ 其他文件 (${folder.otherFiles.length})`);
+					const otherContainer = itemEl.createDiv({ cls: 'tm-other-files-container' });
+					otherContainer.style.display = 'none';
+
+					otherToggle.addEventListener('click', () => {
+						const isHidden = otherContainer.style.display === 'none';
+						otherContainer.style.display = isHidden ? 'block' : 'none';
+						otherToggle.setText(`${isHidden ? '▼' : '▶'} 其他文件 (${folder.otherFiles.length})`);
+					});
+
+					for (const otherFile of folder.otherFiles) {
+						const otherItemEl = otherContainer.createDiv({ cls: 'tm-other-file-item' });
+						const otherLabel = otherItemEl.createEl('label');
+						const otherCb = otherLabel.createEl('input', { type: 'checkbox' });
+
+						this.fileCheckboxes.set(otherFile.filePath, otherCb);
+
+						otherCb.addEventListener('change', () => {
+							if (otherCb.checked) {
+								this.selectedFiles.add(otherFile.filePath);
+							} else {
+								this.selectedFiles.delete(otherFile.filePath);
+							}
+						});
+
+						otherLabel.createSpan({ text: ` ${otherFile.fileName}` });
+					}
+				}
 			}
 		}
 
@@ -113,6 +145,21 @@ export class DeletePhaseModal extends Modal {
 						cb.checked = true;
 						cb.disabled = true;
 						this.selectedFiles.add(note.filePath);
+					} else {
+						cb.disabled = false;
+					}
+				}
+			}
+		}
+		const folder = this.parentFolders.find(f => f.folderPath === folderPath);
+		if (folder) {
+			for (const otherFile of folder.otherFiles) {
+				const cb = this.fileCheckboxes.get(otherFile.filePath);
+				if (cb) {
+					if (folderSelected) {
+						cb.checked = true;
+						cb.disabled = true;
+						this.selectedFiles.add(otherFile.filePath);
 					} else {
 						cb.disabled = false;
 					}

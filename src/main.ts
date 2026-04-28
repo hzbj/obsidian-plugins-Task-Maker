@@ -373,11 +373,30 @@ export default class TaskMakerPlugin extends Plugin {
 				const folder = this.app.vault.getAbstractFileByPath(path);
 				return folder instanceof TFolder;
 			})
-			.map(([path, count]) => ({
-				folderPath: path,
-				folderName: path.split('/').pop() || path,
-				fileCount: count,
-			}));
+			.map(([path, count]) => {
+				const folder = this.app.vault.getAbstractFileByPath(path) as TFolder;
+				// Collect other .md files in the same folder that are NOT in noteFiles
+				const otherFiles: { filePath: string; fileName: string }[] = [];
+				if (folder && folder.children) {
+					for (const child of folder.children) {
+						if (child instanceof TFile && child.extension === 'md') {
+							const isCurrentPhase = noteFiles.some(n => n.filePath === child.path);
+							if (!isCurrentPhase) {
+								otherFiles.push({
+									filePath: child.path,
+									fileName: child.basename,
+								});
+							}
+						}
+					}
+				}
+				return {
+					folderPath: path,
+					folderName: path.split('/').pop() || path,
+					fileCount: count,
+					otherFiles,
+				};
+			});
 
 		new ArchiveModal(
 			this.app,
@@ -435,11 +454,29 @@ export default class TaskMakerPlugin extends Plugin {
 				const folder = this.app.vault.getAbstractFileByPath(path);
 				return folder instanceof TFolder;
 			})
-			.map(([path, count]) => ({
-				folderPath: path,
-				folderName: path.split('/').pop() || path,
-				fileCount: count,
-			}));
+			.map(([path, count]) => {
+				const folder = this.app.vault.getAbstractFileByPath(path) as TFolder;
+				const otherFiles: { filePath: string; fileName: string }[] = [];
+				if (folder && folder.children) {
+					for (const child of folder.children) {
+						if (child instanceof TFile && child.extension === 'md') {
+							const isCurrentPhase = noteFiles.some(n => n.filePath === child.path);
+							if (!isCurrentPhase) {
+								otherFiles.push({
+									filePath: child.path,
+									fileName: child.basename,
+								});
+							}
+						}
+					}
+				}
+				return {
+					folderPath: path,
+					folderName: path.split('/').pop() || path,
+					fileCount: count,
+					otherFiles,
+				};
+			});
 
 		new DeletePhaseModal(
 			this.app,

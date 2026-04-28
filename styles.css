@@ -1305,3 +1305,40 @@
 	margin: 8px 0;
 }
 
+/* Other files toggle and container */
+.tm-other-files-toggle {
+	margin-left: 24px;
+	padding: 2px 6px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	cursor: pointer;
+	user-select: none;
+}
+
+.tm-other-files-toggle:hover {
+	color: var(--text-normal);
+}
+
+.tm-other-files-container {
+	margin-left: 24px;
+	padding-left: 12px;
+	border-left: 2px solid var(--background-modifier-border);
+}
+
+.tm-other-file-item {
+	padding: 2px 0;
+}
+
+.tm-other-file-item label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.9em;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.tm-other-file-item label:hover {
+	color: var(--text-normal);
+}
+
