@@ -405,11 +405,11 @@ export default class TaskMakerPlugin extends Plugin {
 			noteFiles,
 			parentFolders,
 			(code, label) => this.archiveService.buildArchiveFolderName(code, label),
-			async (categoryCode, selectedFiles, selectedFolders) => {
+			async (categoryCode, selectedFiles, selectedFolders, customName) => {
 				await this.archiveService.archivePhase(
 					phase.id,
 					categoryCode,
-					phase.label,
+					customName || phase.label,
 					selectedFiles,
 					selectedFolders
 				);
@@ -427,6 +427,11 @@ export default class TaskMakerPlugin extends Plugin {
 			this.settings.archiveCategories,
 			async (phaseId, targetPath) => {
 				await this.archiveService.restorePhase(phaseId, targetPath);
+				await this.taskScanner.fullScan();
+				await this.reconcilePhaseNotes();
+			},
+			async (phaseId) => {
+				await this.archiveService.clearArchiveRecord(phaseId);
 				await this.taskScanner.fullScan();
 				await this.reconcilePhaseNotes();
 			}

@@ -194,6 +194,14 @@ export class SettingsTab extends PluginSettingTab {
 								await taskScanner.fullScan();
 								await (this.plugin as any).reconcilePhaseNotes();
 								this.display(); // Refresh settings tab
+							},
+							async (phaseId) => {
+								const archiveService = (this.plugin as any).archiveService;
+								await archiveService.clearArchiveRecord(phaseId);
+								const taskScanner = (this.plugin as any).taskScanner;
+								await taskScanner.fullScan();
+								await (this.plugin as any).reconcilePhaseNotes();
+								this.display(); // Refresh settings tab
 							}
 						).open();
 					})

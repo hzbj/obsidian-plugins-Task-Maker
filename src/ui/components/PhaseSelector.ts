@@ -46,6 +46,39 @@ export class PhaseSelector {
 			}
 		}
 
+		// Sort groups: promote groups containing priority=1 phases to top
+		const priorityPhases = this.getPhases();
+		const hasPriority1Phase = (group: typeof phaseGroups[0]): boolean => {
+			return group.phaseIds.some(pid => {
+				const p = priorityPhases.find(ph => ph.id === pid);
+				if (!p) return false;
+				const pri = typeof p.priority === 'number' ? p.priority : parseInt(p.priority as unknown as string, 10);
+				return pri === 1;
+			});
+		};
+		phaseGroups.sort((a, b) => {
+			const aTop = hasPriority1Phase(a);
+			const bTop = hasPriority1Phase(b);
+			if (aTop && !bTop) return -1;
+			if (!aTop && bTop) return 1;
+			return a.order - b.order;
+		});
+
+		// Helper to sort phase IDs within a group (priority=1 first, then by definition order)
+		const sortPhaseIds = (ids: string[]): string[] => {
+			return [...ids].sort((a, b) => {
+				const pa = priorityPhases.find(ph => ph.id === a);
+				const pb = priorityPhases.find(ph => ph.id === b);
+				const priA = typeof pa?.priority === 'number' ? pa.priority : parseInt(pa?.priority as unknown as string, 10);
+				const priB = typeof pb?.priority === 'number' ? pb.priority : parseInt(pb?.priority as unknown as string, 10);
+				const isFirstA = priA === 1;
+				const isFirstB = priB === 1;
+				if (isFirstA && !isFirstB) return -1;
+				if (!isFirstA && isFirstB) return 1;
+				return (pa?.order ?? 0) - (pb?.order ?? 0);
+			});
+		};
+
 		// Render groups
 		for (const group of phaseGroups) {
 			const groupEl = this.el.createDiv({ cls: 'tm-phase-group' });
@@ -60,7 +93,8 @@ export class PhaseSelector {
 
 			this.setupGroupDropZone(groupEl, group.id);
 
-			for (const phaseId of group.phaseIds) {
+			const sortedPhaseIds = sortPhaseIds(group.phaseIds);
+			for (const phaseId of sortedPhaseIds) {
 				const phase = phases.find(p => p.id === phaseId);
 				if (phase) {
 					this.renderPhaseButton(phase, phaseDefinitions, groupEl);

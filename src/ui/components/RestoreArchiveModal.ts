@@ -6,7 +6,8 @@ export class RestoreArchiveModal extends Modal {
 		app: App,
 		private archivedPhases: PhaseDefinition[],
 		private categories: ArchiveCategoryDef[],
-		private onRestore: (phaseId: string, targetPath?: string) => Promise<void>
+		private onRestore: (phaseId: string, targetPath?: string) => Promise<void>,
+		private onClearArchive?: (phaseId: string) => Promise<void>
 	) {
 		super(app);
 	}
@@ -96,6 +97,17 @@ export class RestoreArchiveModal extends Modal {
 				this.showCustomPathInput(itemEl, phase);
 			})
 		);
+		if (this.onClearArchive) {
+			const clearArchive = this.onClearArchive;
+			btnSetting.addButton(btn => btn
+				.setButtonText('清除归档记录')
+				.setWarning()
+				.onClick(async () => {
+					await clearArchive(phase.id);
+					this.renderSuccess(itemEl, phase.label);
+				})
+			);
+		}
 	}
 
 	private showCustomPathInput(itemEl: HTMLElement, phase: PhaseDefinition): void {

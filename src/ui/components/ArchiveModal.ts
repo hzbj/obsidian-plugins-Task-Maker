@@ -7,6 +7,7 @@ export class ArchiveModal extends Modal {
 	private selectedFolders: Set<string> = new Set();
 	private fileCheckboxes: Map<string, HTMLInputElement> = new Map();
 	private previewEl: HTMLElement | null = null;
+	private customName = '';
 
 	constructor(
 		app: App,
@@ -15,7 +16,7 @@ export class ArchiveModal extends Modal {
 		private noteFiles: { filePath: string; fileName: string }[],
 		private parentFolders: { folderPath: string; folderName: string; fileCount: number; otherFiles: { filePath: string; fileName: string }[] }[],
 		private buildFolderName: (categoryCode: string, phaseLabel: string) => string,
-		private onSubmit: (categoryCode: string, selectedFiles: string[], selectedFolders: string[]) => void
+		private onSubmit: (categoryCode: string, selectedFiles: string[], selectedFolders: string[], customName: string) => void
 	) {
 		super(app);
 	}
@@ -27,14 +28,18 @@ export class ArchiveModal extends Modal {
 
 		contentEl.createEl('h3', { text: `归档阶段: ${this.phaseLabel}` });
 
-		// Project name (read-only, from phase-label)
+		// Project name (editable, defaults to phase label)
 		new Setting(contentEl)
 			.setName('项目名称')
-			.setDesc('取自阶段的显示名称')
-			.addText(text => text
-				.setValue(this.phaseLabel)
-				.setDisabled(true)
-			);
+			.setDesc('可自定义项目名称，用于生成归档文件夹名')
+			.addText(text => {
+				text.setValue(this.phaseLabel)
+					.setPlaceholder(this.phaseLabel);
+				text.onChange(value => {
+					this.customName = value.trim();
+					this.updatePreview();
+				});
+			});
 
 		// Category selection
 		new Setting(contentEl)
@@ -157,11 +162,17 @@ export class ArchiveModal extends Modal {
 
 	private updatePreview(): void {
 		if (!this.previewEl) return;
-		if (!this.selectedCategory) {
-			this.previewEl.setText('请选择分类以预览归档路径');
+		if (!this.selectedCategory && !this.customName) {
+			this.previewEl.setText('请选择分类或输入自定义名称以预览归档路径');
 			return;
 		}
-		const folderName = this.buildFolderName(this.selectedCategory, this.phaseLabel);
+		const name = this.customName || this.phaseLabel;
+		let folderName: string;
+		if (this.selectedCategory) {
+			folderName = this.buildFolderName(this.selectedCategory, name);
+		} else {
+			folderName = name;
+		}
 		this.previewEl.setText(`归档路径: ${folderName}/`);
 	}
 
@@ -201,15 +212,15 @@ export class ArchiveModal extends Modal {
 	}
 
 	private handleSubmit(): void {
-		if (!this.selectedCategory) {
-			new Notice('请选择归档分类');
+		if (!this.selectedCategory && !this.customName) {
+			new Notice('请选择归档分类或输入自定义名称');
 			return;
 		}
 		if (this.selectedFiles.size === 0 && this.noteFiles.length > 0 && this.selectedFolders.size === 0) {
 			new Notice('请至少选择一个笔记文件或文件夹');
 			return;
 		}
-		this.onSubmit(this.selectedCategory, Array.from(this.selectedFiles), Array.from(this.selectedFolders));
+		this.onSubmit(this.selectedCategory, Array.from(this.selectedFiles), Array.from(this.selectedFolders), this.customName);
 		this.close();
 	}
 

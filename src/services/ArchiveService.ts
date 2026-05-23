@@ -213,6 +213,27 @@ export class ArchiveService {
 	}
 
 	/**
+	 * Clear archive record for a phase (remove archived flag and archiveInfo).
+	 * This does NOT move files back — it only cleans the metadata, useful when
+	 * the archive files have already been handled externally.
+	 */
+	async clearArchiveRecord(phaseId: string): Promise<void> {
+		const settings = this.getSettings();
+		const phase = settings.phases.find(p => p.id === phaseId);
+		if (!phase || !phase.archived) {
+			new Notice('未找到已归档的阶段记录');
+			return;
+		}
+
+		phase.archived = false;
+		delete phase.archiveInfo;
+		await this.saveSettings();
+
+		this.eventBus.emit('phase-restored', { phaseId, restoredPaths: [] });
+		new Notice(`已清除阶段「${phase.label}」的归档记录`);
+	}
+
+	/**
 	 * Get all archived phases.
 	 */
 	getArchivedPhases(): PhaseDefinition[] {
