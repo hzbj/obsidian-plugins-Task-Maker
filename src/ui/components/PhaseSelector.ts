@@ -93,7 +93,19 @@ export class PhaseSelector {
 
 			this.setupGroupDropZone(groupEl, group.id);
 
+<<<<<<< HEAD
 			const sortedPhaseIds = sortPhaseIds(group.phaseIds);
+=======
+			// Sort phaseIds: priority=1 first, then by existing order
+			const sortedPhaseIds = [...group.phaseIds].sort((a, b) => {
+				const pa = phaseDefinitions.find(p => p.id === a);
+				const pb = phaseDefinitions.find(p => p.id === b);
+				const paPriority = typeof pa?.priority === 'number' ? pa.priority : 99;
+				const pbPriority = typeof pb?.priority === 'number' ? pb.priority : 99;
+				return paPriority - pbPriority;
+			});
+
+>>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 			for (const phaseId of sortedPhaseIds) {
 				const phase = phases.find(p => p.id === phaseId);
 				if (phase) {
@@ -102,8 +114,16 @@ export class PhaseSelector {
 			}
 		}
 
-		// Render ungrouped phases directly (no group container)
-		const ungroupedPhases = phases.filter(p => !groupedPhaseIds.has(p.id));
+		// Render ungrouped phases directly (no group container), sorted by priority
+		const ungroupedPhases = phases
+			.filter(p => !groupedPhaseIds.has(p.id))
+			.sort((a, b) => {
+				const pa = phaseDefinitions.find(p => p.id === a.id);
+				const pb = phaseDefinitions.find(p => p.id === b.id);
+				const paPriority = typeof pa?.priority === 'number' ? pa.priority : 99;
+				const pbPriority = typeof pb?.priority === 'number' ? pb.priority : 99;
+				return paPriority - pbPriority;
+			});
 		for (const phase of ungroupedPhases) {
 			this.renderPhaseButton(phase, phaseDefinitions, this.el);
 		}

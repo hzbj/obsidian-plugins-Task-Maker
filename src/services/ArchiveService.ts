@@ -213,14 +213,19 @@ export class ArchiveService {
 	}
 
 	/**
+<<<<<<< HEAD
 	 * Clear archive record for a phase (remove archived flag and archiveInfo).
 	 * This does NOT move files back — it only cleans the metadata, useful when
 	 * the archive files have already been handled externally.
+=======
+	 * Clear an archived phase record: trash archive files and remove phase from settings.
+>>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 	 */
 	async clearArchiveRecord(phaseId: string): Promise<void> {
 		const settings = this.getSettings();
 		const phase = settings.phases.find(p => p.id === phaseId);
 		if (!phase || !phase.archived) {
+<<<<<<< HEAD
 			new Notice('未找到已归档的阶段记录');
 			return;
 		}
@@ -231,6 +236,38 @@ export class ArchiveService {
 
 		this.eventBus.emit('phase-restored', { phaseId, restoredPaths: [] });
 		new Notice(`已清除阶段「${phase.label}」的归档记录`);
+=======
+			new Notice('未找到已归档的阶段');
+			return;
+		}
+
+		const archiveInfo = phase.archiveInfo;
+		const label = phase.label;
+
+		if (archiveInfo) {
+			// Move archive items (folders and files) to trash
+			for (const item of archiveInfo.archivedItems) {
+				const abstractFile = this.app.vault.getAbstractFileByPath(item.archivedPath);
+				if (abstractFile) {
+					try {
+						await this.app.vault.trash(abstractFile, false);
+					} catch (e) {
+						console.error(`Failed to trash archive item ${item.archivedPath}:`, e);
+					}
+				}
+			}
+
+			// Try to clean up empty archive folder
+			await this.cleanEmptyFolder(archiveInfo.archivePath);
+		}
+
+		// Remove phase from settings
+		settings.phases = settings.phases.filter(p => p.id !== phaseId);
+		await this.saveSettings();
+
+		this.eventBus.emit('phase-deleted', { phaseId });
+		new Notice(`归档记录「${label}」已清除`);
+>>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 	}
 
 	/**

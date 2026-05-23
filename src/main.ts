@@ -434,6 +434,16 @@ export default class TaskMakerPlugin extends Plugin {
 				await this.archiveService.clearArchiveRecord(phaseId);
 				await this.taskScanner.fullScan();
 				await this.reconcilePhaseNotes();
+<<<<<<< HEAD
+=======
+			},
+			async (phaseId, newLabel) => {
+				const phase = this.settings.phases.find(p => p.id === phaseId);
+				if (phase) {
+					phase.label = newLabel;
+					await this.saveSettings();
+				}
+>>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 			}
 		).open();
 	}

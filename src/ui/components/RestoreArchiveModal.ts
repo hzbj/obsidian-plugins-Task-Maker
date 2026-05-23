@@ -2,12 +2,19 @@ import { App, Modal, Setting, Notice } from 'obsidian';
 import { PhaseDefinition, ArchiveCategoryDef } from '../../models/types';
 
 export class RestoreArchiveModal extends Modal {
+	private clearConfirmPhases: Set<string> = new Set();
+
 	constructor(
 		app: App,
 		private archivedPhases: PhaseDefinition[],
 		private categories: ArchiveCategoryDef[],
 		private onRestore: (phaseId: string, targetPath?: string) => Promise<void>,
+<<<<<<< HEAD
 		private onClearArchive?: (phaseId: string) => Promise<void>
+=======
+		private onClear?: (phaseId: string) => Promise<void>,
+		private onRenamePhase?: (phaseId: string, newLabel: string) => Promise<void>
+>>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 	) {
 		super(app);
 	}
@@ -53,7 +60,18 @@ export class RestoreArchiveModal extends Modal {
 			: '未知';
 
 		const headerEl = itemEl.createDiv({ cls: 'tm-restore-phase-header' });
-		headerEl.createEl('strong', { text: phase.label });
+
+		// Editable phase label
+		const labelEl = headerEl.createEl('strong', { cls: 'tm-restore-phase-label' });
+		labelEl.textContent = phase.label;
+		if (this.onRenamePhase) {
+			labelEl.title = '点击编辑项目名称';
+			labelEl.style.cursor = 'pointer';
+			labelEl.addEventListener('click', () => {
+				this.startInlineEdit(labelEl, phase);
+			});
+		}
+
 		headerEl.createSpan({ text: ` [${categoryLabel}]`, cls: 'tm-restore-phase-category' });
 
 		// Info section
@@ -97,6 +115,7 @@ export class RestoreArchiveModal extends Modal {
 				this.showCustomPathInput(itemEl, phase);
 			})
 		);
+<<<<<<< HEAD
 		if (this.onClearArchive) {
 			const clearArchive = this.onClearArchive;
 			btnSetting.addButton(btn => btn
@@ -107,6 +126,28 @@ export class RestoreArchiveModal extends Modal {
 					this.renderSuccess(itemEl, phase.label);
 				})
 			);
+=======
+
+		// Clear archive button (with confirmation)
+		if (this.onClear) {
+			const isConfirming = this.clearConfirmPhases.has(phase.id);
+			btnSetting.addButton(btn => {
+				btn.setButtonText(isConfirming ? '确认清除' : '清除归档')
+					.setWarning()
+					.onClick(async () => {
+						if (!this.clearConfirmPhases.has(phase.id)) {
+							this.clearConfirmPhases.add(phase.id);
+							btn.setButtonText('确认清除');
+						} else {
+							this.clearConfirmPhases.delete(phase.id);
+							await this.onClear!(phase.id);
+							// Re-render the modal after clearing
+							this.onOpen();
+						}
+					});
+				return btn;
+			});
+>>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 		}
 	}
 
@@ -140,6 +181,50 @@ export class RestoreArchiveModal extends Modal {
 					this.renderSuccess(itemEl, phase.label);
 				})
 			);
+	}
+
+	private startInlineEdit(labelEl: HTMLElement, phase: PhaseDefinition): void {
+		const originalText = labelEl.textContent || '';
+		const input = document.createElement('input');
+		input.type = 'text';
+		input.value = originalText;
+		input.className = 'tm-restore-phase-label-input';
+		input.style.cssText = 'font-weight:bold;font-size:inherit;font-family:inherit;border:1px solid var(--interactive-accent);border-radius:4px;padding:2px 6px;background:var(--background-primary);color:var(--text-normal);';
+
+		labelEl.replaceWith(input);
+		input.focus();
+		input.select();
+
+		const finishEdit = async () => {
+			const newLabel = input.value.trim();
+			if (newLabel && newLabel !== originalText && this.onRenamePhase) {
+				await this.onRenamePhase(phase.id, newLabel);
+				phase.label = newLabel;
+			}
+			// Restore label element
+			const newLabelEl = document.createElement('strong');
+			newLabelEl.className = 'tm-restore-phase-label';
+			newLabelEl.textContent = newLabel || originalText;
+			newLabelEl.title = '点击编辑项目名称';
+			newLabelEl.style.cursor = 'pointer';
+			newLabelEl.addEventListener('click', () => {
+				this.startInlineEdit(newLabelEl, phase);
+			});
+			input.replaceWith(newLabelEl);
+		};
+
+		input.addEventListener('blur', finishEdit);
+		input.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				input.blur();
+			}
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				input.value = originalText;
+				input.blur();
+			}
+		});
 	}
 
 	private renderSuccess(itemEl: HTMLElement, phaseLabel: string): void {
