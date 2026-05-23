@@ -213,6 +213,45 @@ export class ArchiveService {
 	}
 
 	/**
+	 * Clear an archived phase record: trash archive files and remove phase from settings.
+	 */
+	async clearArchiveRecord(phaseId: string): Promise<void> {
+		const settings = this.getSettings();
+		const phase = settings.phases.find(p => p.id === phaseId);
+		if (!phase || !phase.archived) {
+			new Notice('未找到已归档的阶段');
+			return;
+		}
+
+		const archiveInfo = phase.archiveInfo;
+		const label = phase.label;
+
+		if (archiveInfo) {
+			// Move archive items (folders and files) to trash
+			for (const item of archiveInfo.archivedItems) {
+				const abstractFile = this.app.vault.getAbstractFileByPath(item.archivedPath);
+				if (abstractFile) {
+					try {
+						await this.app.vault.trash(abstractFile, false);
+					} catch (e) {
+						console.error(`Failed to trash archive item ${item.archivedPath}:`, e);
+					}
+				}
+			}
+
+			// Try to clean up empty archive folder
+			await this.cleanEmptyFolder(archiveInfo.archivePath);
+		}
+
+		// Remove phase from settings
+		settings.phases = settings.phases.filter(p => p.id !== phaseId);
+		await this.saveSettings();
+
+		this.eventBus.emit('phase-deleted', { phaseId });
+		new Notice(`归档记录「${label}」已清除`);
+	}
+
+	/**
 	 * Get all archived phases.
 	 */
 	getArchivedPhases(): PhaseDefinition[] {
