@@ -185,7 +185,7 @@ export class ArchiveService {
 		new Notice(`阶段「${phase.label}」已恢复，还原了 ${restoredPaths.length} 个项目`);
 	}
 
-	/** Clear Task Maker fields from archived Markdown files without deleting files or archive records. */
+	/** Clear Task Maker fields, then remove the phase from archived records without deleting files. */
 	async clearArchivedTaskFields(phaseId: string): Promise<void> {
 		const settings = this.getSettings();
 		const phase = settings.phases.find(p => p.id === phaseId);
@@ -201,7 +201,11 @@ export class ArchiveService {
 			cleaned++;
 		}
 
-		new Notice(`已清除 ${cleaned} 个归档笔记中的任务字段`);
+		settings.phases = settings.phases.filter(p => p.id !== phaseId);
+		await this.saveSettings();
+
+		this.eventBus.emit('phase-deleted', { phaseId });
+		new Notice(`已清除 ${cleaned} 个归档笔记中的任务字段，并从已归档中删除`);
 	}
 
 	/** Metadata-only archive record clear; kept for compatibility and not used by the archive modal. */

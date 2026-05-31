@@ -119,7 +119,8 @@ export class RestoreArchiveModal extends Modal {
 						}
 						this.clearConfirmPhases.delete(phase.id);
 						await this.onClearFields!(phase.id);
-						this.renderSuccess(itemEl, `阶段「${phase.label}」的任务字段已清除`);
+						this.archivedPhases = this.archivedPhases.filter(p => p.id !== phase.id);
+						this.onOpen();
 					});
 				return btn;
 			});

@@ -792,7 +792,7 @@ var ArchiveService = class {
     this.eventBus.emit("phase-restored", { phaseId, restoredPaths });
     new import_obsidian3.Notice(`\u9636\u6BB5\u300C${phase.label}\u300D\u5DF2\u6062\u590D\uFF0C\u8FD8\u539F\u4E86 ${restoredPaths.length} \u4E2A\u9879\u76EE`);
   }
-  /** Clear Task Maker fields from archived Markdown files without deleting files or archive records. */
+  /** Clear Task Maker fields, then remove the phase from archived records without deleting files. */
   async clearArchivedTaskFields(phaseId) {
     const settings = this.getSettings();
     const phase = settings.phases.find((p) => p.id === phaseId);
@@ -806,7 +806,10 @@ var ArchiveService = class {
       await this.clearTaskMakerFields(file, phaseId);
       cleaned++;
     }
-    new import_obsidian3.Notice(`\u5DF2\u6E05\u9664 ${cleaned} \u4E2A\u5F52\u6863\u7B14\u8BB0\u4E2D\u7684\u4EFB\u52A1\u5B57\u6BB5`);
+    settings.phases = settings.phases.filter((p) => p.id !== phaseId);
+    await this.saveSettings();
+    this.eventBus.emit("phase-deleted", { phaseId });
+    new import_obsidian3.Notice(`\u5DF2\u6E05\u9664 ${cleaned} \u4E2A\u5F52\u6863\u7B14\u8BB0\u4E2D\u7684\u4EFB\u52A1\u5B57\u6BB5\uFF0C\u5E76\u4ECE\u5DF2\u5F52\u6863\u4E2D\u5220\u9664`);
   }
   /** Metadata-only archive record clear; kept for compatibility and not used by the archive modal. */
   async clearArchiveRecord(phaseId) {
@@ -3116,7 +3119,8 @@ var RestoreArchiveModal = class extends import_obsidian10.Modal {
           }
           this.clearConfirmPhases.delete(phase.id);
           await this.onClearFields(phase.id);
-          this.renderSuccess(itemEl, `\u9636\u6BB5\u300C${phase.label}\u300D\u7684\u4EFB\u52A1\u5B57\u6BB5\u5DF2\u6E05\u9664`);
+          this.archivedPhases = this.archivedPhases.filter((p) => p.id !== phase.id);
+          this.onOpen();
         });
         return btn;
       });
