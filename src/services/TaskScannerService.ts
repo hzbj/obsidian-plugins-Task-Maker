@@ -75,6 +75,12 @@ export class TaskScannerService {
 	/** Scan a single file and update cache. forceExtract=true skips trigger check. */
 	async scanFile(file: TFile, forceExtract = false): Promise<Task[]> {
 		const settings = this.getSettings();
+		if (this.isArchivedPath(file.path, settings)) {
+			this.taskCache.delete(file.path);
+			this.detectedPhases.delete(file.path);
+			return [];
+		}
+
 		const content = await this.app.vault.cachedRead(file);
 		const cache = this.app.metadataCache.getFileCache(file);
 
@@ -228,6 +234,21 @@ export class TaskScannerService {
 	clearCache(): void {
 		this.taskCache.clear();
 		this.detectedPhases.clear();
+	}
+
+	private isArchivedPath(filePath: string, settings: PluginSettings): boolean {
+		for (const phase of settings.phases) {
+			if (!phase.archived || !phase.archiveInfo) continue;
+			for (const item of phase.archiveInfo.archivedItems) {
+				if (item.type === 'file' && item.archivedPath === filePath) {
+					return true;
+				}
+				if (item.type === 'folder' && filePath.startsWith(`${item.archivedPath}/`)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/** Detect phase definition from frontmatter properties or tags */

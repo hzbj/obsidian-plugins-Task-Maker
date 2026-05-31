@@ -10,9 +10,7 @@ export class ArchiveService {
 		private saveSettings: () => Promise<void>
 	) {}
 
-	/**
-	 * Build archive folder name: "YYYY.MM_categoryCode.phaseLabel"
-	 */
+	/** Build archive folder name: "YYYY.MM_categoryCode.phaseLabel" */
 	buildArchiveFolderName(categoryCode: string, phaseLabel: string): string {
 		const now = new Date();
 		const year = now.getFullYear();
@@ -20,10 +18,7 @@ export class ArchiveService {
 		return `${year}.${month}_${categoryCode}.${phaseLabel}`;
 	}
 
-	/**
-	 * Archive a phase: create archive folder, move note files, remove phase from settings.
-	 * Returns the archive folder path.
-	 */
+	/** Archive a phase by moving selected files/folders and recording archive metadata. */
 	async archivePhase(
 		phaseId: string,
 		categoryCode: string,
@@ -41,42 +36,37 @@ export class ArchiveService {
 
 		const archivedItems: ArchivedItem[] = [];
 
-		// Move folders first
 		for (const folderPath of folders) {
-			const movedCount = await this.moveFolder(folderPath, `${archivePath}/${folderPath.split('/').pop()}`);
+			const targetPath = `${archivePath}/${folderPath.split('/').pop()}`;
+			await this.moveFolder(folderPath, targetPath);
 			archivedItems.push({
 				type: 'folder',
 				originalPath: folderPath,
-				archivedPath: `${archivePath}/${folderPath.split('/').pop()}`,
+				archivedPath: targetPath,
 			});
 		}
 
-		// Collect file paths that are inside already-moved folders (skip them)
-		const movedFolderPrefixes = folders.map(f => f + '/');
+		const movedFolderPrefixes = folders.map(f => `${f}/`);
 		const remainingFiles = noteFiles.filter(f => !movedFolderPrefixes.some(prefix => f.startsWith(prefix)));
 
-		// Move individual files
-		let movedCount = 0;
 		for (const filePath of remainingFiles) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
-			if (file instanceof TFile) {
-				const newPath = `${archivePath}/${file.name}`;
-				try {
-					await this.app.fileManager.renameFile(file, newPath);
-					archivedItems.push({
-						type: 'file',
-						originalPath: filePath,
-						archivedPath: newPath,
-					});
-					movedCount++;
-				} catch (e) {
-					console.error(`Failed to archive file ${filePath}:`, e);
-					new Notice(`归档文件失败: ${file.name}`);
-				}
+			if (!(file instanceof TFile)) continue;
+
+			const newPath = `${archivePath}/${file.name}`;
+			try {
+				await this.app.fileManager.renameFile(file, newPath);
+				archivedItems.push({
+					type: 'file',
+					originalPath: filePath,
+					archivedPath: newPath,
+				});
+			} catch (e) {
+				console.error(`Failed to archive file ${filePath}:`, e);
+				new Notice(`归档文件失败: ${file.name}`);
 			}
 		}
 
-		// Record archive metadata
 		const archivedPhase = settings.phases.find(p => p.id === phaseId);
 		if (archivedPhase) {
 			archivedPhase.archived = true;
@@ -91,21 +81,17 @@ export class ArchiveService {
 		await this.saveSettings();
 
 		this.eventBus.emit('phase-archived', { phaseId, archivePath });
-		const totalMoved = archivedItems.length;
-		new Notice(`阶段「${phaseLabel}」已归档，移动了 ${totalMoved} 个项目到 ${archivePath}`);
+		new Notice(`阶段「${phaseLabel}」已归档，移动了 ${archivedItems.length} 个项目到 ${archivePath}`);
 		return archivePath;
 	}
 
-	/**
-	 * Delete a phase: remove from settings and delete associated note files.
-	 */
+	/** Delete a phase and selected associated files/folders. */
 	async deletePhase(phaseId: string, noteFiles: string[] = [], folders: string[] = []): Promise<void> {
 		const settings = this.getSettings();
 		const phase = settings.phases.find(p => p.id === phaseId);
 		const label = phase?.label ?? phaseId;
 
-		// Delete associated folders
-		const deletedFolderPrefixes = folders.map(f => f + '/');
+		const deletedFolderPrefixes = folders.map(f => `${f}/`);
 		for (const folderPath of folders) {
 			const folder = this.app.vault.getAbstractFileByPath(folderPath);
 			if (folder instanceof TFolder) {
@@ -118,10 +104,7 @@ export class ArchiveService {
 			}
 		}
 
-		// Filter out files that were inside deleted folders
 		const remainingFiles = noteFiles.filter(f => !deletedFolderPrefixes.some(prefix => f.startsWith(prefix)));
-
-		// Delete associated note files
 		let deletedCount = 0;
 		for (const filePath of remainingFiles) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -142,14 +125,12 @@ export class ArchiveService {
 		this.eventBus.emit('phase-deleted', { phaseId });
 		const folderInfo = folders.length > 0 ? `${folders.length} 个文件夹` : '';
 		const fileInfo = deletedCount > 0 ? `${deletedCount} 个笔记` : '';
-		const separator = folderInfo && fileInfo ? '和 ' : '';
+		const separator = folderInfo && fileInfo ? '和' : '';
 		const deletedInfo = folderInfo || fileInfo ? `，移除了 ${folderInfo}${separator}${fileInfo}` : '';
 		new Notice(`阶段「${label}」已删除${deletedInfo}`);
 	}
 
-	/**
-	 * Restore a previously archived phase back to its original locations.
-	 */
+	/** Restore a previously archived phase back to its original locations. */
 	async restorePhase(phaseId: string, targetBasePath?: string): Promise<void> {
 		const settings = this.getSettings();
 		const phase = settings.phases.find(p => p.id === phaseId);
@@ -162,14 +143,12 @@ export class ArchiveService {
 		const restoredPaths: string[] = [];
 
 		if (archiveInfo && archiveInfo.archivedItems.length > 0) {
-			// Restore items in reverse order (files first, then folders structure is implicitly handled)
 			for (const item of archiveInfo.archivedItems) {
 				const targetPath = targetBasePath
 					? `${targetBasePath}/${item.originalPath.split('/').pop()}`
 					: item.originalPath;
 
 				if (item.type === 'folder') {
-					// Move folder contents back
 					const archiveFolder = this.app.vault.getAbstractFileByPath(item.archivedPath);
 					if (archiveFolder instanceof TFolder) {
 						await this.ensureFolder(targetPath);
@@ -177,13 +156,9 @@ export class ArchiveService {
 						restoredPaths.push(targetPath);
 					}
 				} else {
-					// Move individual file back
 					const file = this.app.vault.getAbstractFileByPath(item.archivedPath);
 					if (file instanceof TFile) {
-						const restorePath = targetBasePath
-							? `${targetBasePath}/${file.name}`
-							: item.originalPath;
-						// Ensure parent folder exists
+						const restorePath = targetBasePath ? `${targetBasePath}/${file.name}` : item.originalPath;
 						const parentPath = restorePath.substring(0, restorePath.lastIndexOf('/'));
 						if (parentPath) {
 							await this.ensureFolder(parentPath);
@@ -199,11 +174,9 @@ export class ArchiveService {
 				}
 			}
 
-			// Try to clean up empty archive folder
 			await this.cleanEmptyFolder(archiveInfo.archivePath);
 		}
 
-		// Clear archived status
 		phase.archived = false;
 		delete phase.archiveInfo;
 		await this.saveSettings();
@@ -212,20 +185,30 @@ export class ArchiveService {
 		new Notice(`阶段「${phase.label}」已恢复，还原了 ${restoredPaths.length} 个项目`);
 	}
 
-	/**
-<<<<<<< HEAD
-	 * Clear archive record for a phase (remove archived flag and archiveInfo).
-	 * This does NOT move files back — it only cleans the metadata, useful when
-	 * the archive files have already been handled externally.
-=======
-	 * Clear an archived phase record: trash archive files and remove phase from settings.
->>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
-	 */
+	/** Clear Task Maker fields from archived Markdown files without deleting files or archive records. */
+	async clearArchivedTaskFields(phaseId: string): Promise<void> {
+		const settings = this.getSettings();
+		const phase = settings.phases.find(p => p.id === phaseId);
+		if (!phase || !phase.archived) {
+			new Notice('未找到已归档的阶段');
+			return;
+		}
+
+		const files = this.getArchivedMarkdownFiles(phase);
+		let cleaned = 0;
+		for (const file of files) {
+			await this.clearTaskMakerFields(file, phaseId);
+			cleaned++;
+		}
+
+		new Notice(`已清除 ${cleaned} 个归档笔记中的任务字段`);
+	}
+
+	/** Metadata-only archive record clear; kept for compatibility and not used by the archive modal. */
 	async clearArchiveRecord(phaseId: string): Promise<void> {
 		const settings = this.getSettings();
 		const phase = settings.phases.find(p => p.id === phaseId);
 		if (!phase || !phase.archived) {
-<<<<<<< HEAD
 			new Notice('未找到已归档的阶段记录');
 			return;
 		}
@@ -236,53 +219,81 @@ export class ArchiveService {
 
 		this.eventBus.emit('phase-restored', { phaseId, restoredPaths: [] });
 		new Notice(`已清除阶段「${phase.label}」的归档记录`);
-=======
-			new Notice('未找到已归档的阶段');
-			return;
-		}
-
-		const archiveInfo = phase.archiveInfo;
-		const label = phase.label;
-
-		if (archiveInfo) {
-			// Move archive items (folders and files) to trash
-			for (const item of archiveInfo.archivedItems) {
-				const abstractFile = this.app.vault.getAbstractFileByPath(item.archivedPath);
-				if (abstractFile) {
-					try {
-						await this.app.vault.trash(abstractFile, false);
-					} catch (e) {
-						console.error(`Failed to trash archive item ${item.archivedPath}:`, e);
-					}
-				}
-			}
-
-			// Try to clean up empty archive folder
-			await this.cleanEmptyFolder(archiveInfo.archivePath);
-		}
-
-		// Remove phase from settings
-		settings.phases = settings.phases.filter(p => p.id !== phaseId);
-		await this.saveSettings();
-
-		this.eventBus.emit('phase-deleted', { phaseId });
-		new Notice(`归档记录「${label}」已清除`);
->>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 	}
 
-	/**
-	 * Get all archived phases.
-	 */
+	/** Get all archived phases. */
 	getArchivedPhases(): PhaseDefinition[] {
 		return this.getSettings().phases.filter(p => p.archived === true);
 	}
 
-	/** Ensure a folder exists, creating it recursively if needed */
+	private getArchivedMarkdownFiles(phase: PhaseDefinition): TFile[] {
+		const files: TFile[] = [];
+		const archiveInfo = phase.archiveInfo;
+		if (!archiveInfo) return files;
+
+		for (const item of archiveInfo.archivedItems) {
+			const entry = this.app.vault.getAbstractFileByPath(item.archivedPath);
+			if (entry instanceof TFile && entry.extension === 'md') {
+				files.push(entry);
+			} else if (entry instanceof TFolder) {
+				this.collectMarkdownFiles(entry, files);
+			}
+		}
+
+		return files;
+	}
+
+	private collectMarkdownFiles(folder: TFolder, files: TFile[]): void {
+		for (const child of folder.children) {
+			if (child instanceof TFile && child.extension === 'md') {
+				files.push(child);
+			} else if (child instanceof TFolder) {
+				this.collectMarkdownFiles(child, files);
+			}
+		}
+	}
+
+	private async clearTaskMakerFields(file: TFile, phaseId: string): Promise<void> {
+		const cache = this.app.metadataCache.getFileCache(file);
+		if (cache?.frontmatter) {
+			await this.app.fileManager.processFrontMatter(file, (fm) => {
+				delete fm.phase;
+				delete fm['phase-id'];
+				delete fm['phase-label'];
+				delete fm['phase-start'];
+				delete fm['phase-end'];
+			});
+		}
+
+		const tagRegex = this.buildPhaseTagRegex(phaseId);
+		await this.app.vault.process(file, (content) => {
+			return content.split('\n').map(line => this.removePhaseTagsFromLine(line, tagRegex)).join('\n');
+		});
+	}
+
+	private buildPhaseTagRegex(phaseId: string): RegExp {
+		const namespace = this.getSettings().tagNamespace.trim();
+		const prefix = namespace ? `${this.escapeRegex(namespace)}/` : '';
+		return new RegExp(`\\s*#${prefix}${this.escapeRegex(phaseId)}-(ui|in|un|nn|p1|p2)\\b`, 'g');
+	}
+
+	private removePhaseTagsFromLine(line: string, tagRegex: RegExp): string {
+		const match = /^(\s*)(.*)$/.exec(line);
+		if (!match) return line;
+
+		const [, leading, body] = match;
+		tagRegex.lastIndex = 0;
+		const cleanedBody = body
+			.replace(tagRegex, '')
+			.replace(/[ \t]{2,}/g, ' ')
+			.replace(/[ \t]+$/g, '');
+		return `${leading}${cleanedBody}`;
+	}
+
 	private async ensureFolder(path: string): Promise<void> {
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFolder) return;
 
-		// Create parent folders recursively
 		const parts = path.split('/');
 		let current = '';
 		for (const part of parts) {
@@ -292,7 +303,7 @@ export class ArchiveService {
 				try {
 					await this.app.vault.createFolder(current);
 				} catch {
-					// Folder may have been created concurrently
+					// Folder may have been created concurrently.
 				}
 			}
 		}
@@ -305,23 +316,12 @@ export class ArchiveService {
 		await this.ensureFolder(targetPath);
 
 		let movedCount = 0;
-		// Recursively collect all files first to avoid modification during iteration
 		const files: TFile[] = [];
-		const collectFiles = (folder: TFolder) => {
-			for (const child of folder.children) {
-				if (child instanceof TFile) {
-					files.push(child);
-				} else if (child instanceof TFolder) {
-					collectFiles(child);
-				}
-			}
-		};
-		collectFiles(sourceFolder);
+		this.collectAllFiles(sourceFolder, files);
 
 		for (const file of files) {
 			const relativePath = file.path.substring(sourcePath.length + 1);
 			const newPath = `${targetPath}/${relativePath}`;
-			// Ensure subdirectory exists
 			const parentPath = newPath.substring(0, newPath.lastIndexOf('/'));
 			if (parentPath) {
 				await this.ensureFolder(parentPath);
@@ -334,9 +334,18 @@ export class ArchiveService {
 			}
 		}
 
-		// Clean up empty source folder
 		await this.cleanEmptyFolder(sourcePath);
 		return movedCount;
+	}
+
+	private collectAllFiles(folder: TFolder, files: TFile[]): void {
+		for (const child of folder.children) {
+			if (child instanceof TFile) {
+				files.push(child);
+			} else if (child instanceof TFolder) {
+				this.collectAllFiles(child, files);
+			}
+		}
 	}
 
 	private async cleanEmptyFolder(path: string): Promise<void> {
@@ -346,8 +355,12 @@ export class ArchiveService {
 			try {
 				await this.app.vault.delete(folder);
 			} catch {
-				// Folder may not be empty or already deleted
+				// Folder may not be empty or may already be gone.
 			}
 		}
+	}
+
+	private escapeRegex(str: string): string {
+		return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	}
 }

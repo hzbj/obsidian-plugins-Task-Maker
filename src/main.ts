@@ -186,6 +186,8 @@ export default class TaskMakerPlugin extends Plugin {
 			const info = infos[0]; // Use first file's info as representative
 			const existing = settings.phases.find(p => p.id === phaseId);
 			if (existing) {
+				if (existing.archived) continue;
+
 				// noteFilePath: use first file's path if current path not in detected files
 				if (!existing.noteFilePath || !infos.some(i => i.filePath === existing.noteFilePath)) {
 					existing.noteFilePath = info.filePath;
@@ -230,6 +232,7 @@ export default class TaskMakerPlugin extends Plugin {
 
 		// Remove auto-detected phases whose notes no longer have the phase tag
 		settings.phases = settings.phases.filter(p => {
+			if (p.archived) return true;
 			if (!p.autoDetected) return true;
 			if (detectedById.has(p.id)) return true;
 			removed.push(p.id);
@@ -431,11 +434,9 @@ export default class TaskMakerPlugin extends Plugin {
 				await this.reconcilePhaseNotes();
 			},
 			async (phaseId) => {
-				await this.archiveService.clearArchiveRecord(phaseId);
+				await this.archiveService.clearArchivedTaskFields(phaseId);
 				await this.taskScanner.fullScan();
 				await this.reconcilePhaseNotes();
-<<<<<<< HEAD
-=======
 			},
 			async (phaseId, newLabel) => {
 				const phase = this.settings.phases.find(p => p.id === phaseId);
@@ -443,7 +444,6 @@ export default class TaskMakerPlugin extends Plugin {
 					phase.label = newLabel;
 					await this.saveSettings();
 				}
->>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 			}
 		).open();
 	}

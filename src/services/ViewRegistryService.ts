@@ -7,7 +7,7 @@ export class ViewRegistryService {
 
 	/** Get a view definition by its ID */
 	getView(viewId: string): ViewDefinition | undefined {
-		const phase = this.getSettings().phases.find(p => p.id === viewId);
+		const phase = this.getSettings().phases.find(p => p.id === viewId && !p.archived);
 		if (phase) {
 			return {
 				id: phase.id,
@@ -61,7 +61,7 @@ export class ViewRegistryService {
 
 	/** Determine the view type of a given viewId */
 	getViewType(viewId: string): ViewType | undefined {
-		if (this.getSettings().phases.some(p => p.id === viewId)) {
+		if (this.getSettings().phases.some(p => p.id === viewId && !p.archived)) {
 			return 'phase';
 		}
 		return undefined;

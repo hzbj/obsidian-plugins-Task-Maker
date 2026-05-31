@@ -37,6 +37,12 @@ export class PhaseSelector {
 		const settings = this.getSettings();
 		const phaseGroups = [...settings.phaseGroups].sort((a, b) => a.order - b.order);
 		const phaseDefinitions = this.getPhases();
+		const getPhaseDef = (phaseId: string) => phaseDefinitions.find(p => p.id === phaseId);
+		const getPriority = (phaseId: string): number => {
+			const raw = getPhaseDef(phaseId)?.priority;
+			return typeof raw === 'number' ? raw : (parseInt(raw as unknown as string, 10) || 999);
+		};
+		const getOrder = (phaseId: string): number => getPhaseDef(phaseId)?.order ?? 0;
 
 		// Track which phases are already in groups
 		const groupedPhaseIds = new Set<string>();
@@ -46,36 +52,23 @@ export class PhaseSelector {
 			}
 		}
 
-		// Sort groups: promote groups containing priority=1 phases to top
-		const priorityPhases = this.getPhases();
-		const hasPriority1Phase = (group: typeof phaseGroups[0]): boolean => {
-			return group.phaseIds.some(pid => {
-				const p = priorityPhases.find(ph => ph.id === pid);
-				if (!p) return false;
-				const pri = typeof p.priority === 'number' ? p.priority : parseInt(p.priority as unknown as string, 10);
-				return pri === 1;
-			});
-		};
-		phaseGroups.sort((a, b) => {
-			const aTop = hasPriority1Phase(a);
-			const bTop = hasPriority1Phase(b);
-			if (aTop && !bTop) return -1;
-			if (!aTop && bTop) return 1;
-			return a.order - b.order;
-		});
+		// Render first-stage buttons before every group without changing group membership.
+		const firstPhaseIds = new Set(
+			phases
+				.filter(phase => getPriority(phase.id) === 1)
+				.sort((a, b) => getOrder(a.id) - getOrder(b.id))
+				.map(phase => phase.id)
+		);
+		for (const phase of phases.filter(p => firstPhaseIds.has(p.id))) {
+			this.renderPhaseButton(phase, phaseDefinitions, this.el);
+		}
 
-		// Helper to sort phase IDs within a group (priority=1 first, then by definition order)
 		const sortPhaseIds = (ids: string[]): string[] => {
 			return [...ids].sort((a, b) => {
-				const pa = priorityPhases.find(ph => ph.id === a);
-				const pb = priorityPhases.find(ph => ph.id === b);
-				const priA = typeof pa?.priority === 'number' ? pa.priority : parseInt(pa?.priority as unknown as string, 10);
-				const priB = typeof pb?.priority === 'number' ? pb.priority : parseInt(pb?.priority as unknown as string, 10);
-				const isFirstA = priA === 1;
-				const isFirstB = priB === 1;
-				if (isFirstA && !isFirstB) return -1;
-				if (!isFirstA && isFirstB) return 1;
-				return (pa?.order ?? 0) - (pb?.order ?? 0);
+				const priA = getPriority(a);
+				const priB = getPriority(b);
+				if (priA !== priB) return priA - priB;
+				return getOrder(a) - getOrder(b);
 			});
 		};
 
@@ -93,20 +86,8 @@ export class PhaseSelector {
 
 			this.setupGroupDropZone(groupEl, group.id);
 
-<<<<<<< HEAD
-			const sortedPhaseIds = sortPhaseIds(group.phaseIds);
-=======
-			// Sort phaseIds: priority=1 first, then by existing order
-			const sortedPhaseIds = [...group.phaseIds].sort((a, b) => {
-				const pa = phaseDefinitions.find(p => p.id === a);
-				const pb = phaseDefinitions.find(p => p.id === b);
-				const paPriority = typeof pa?.priority === 'number' ? pa.priority : 99;
-				const pbPriority = typeof pb?.priority === 'number' ? pb.priority : 99;
-				return paPriority - pbPriority;
-			});
-
->>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
-			for (const phaseId of sortedPhaseIds) {
+			for (const phaseId of sortPhaseIds(group.phaseIds)) {
+				if (firstPhaseIds.has(phaseId)) continue;
 				const phase = phases.find(p => p.id === phaseId);
 				if (phase) {
 					this.renderPhaseButton(phase, phaseDefinitions, groupEl);
@@ -116,13 +97,12 @@ export class PhaseSelector {
 
 		// Render ungrouped phases directly (no group container), sorted by priority
 		const ungroupedPhases = phases
-			.filter(p => !groupedPhaseIds.has(p.id))
+			.filter(p => !groupedPhaseIds.has(p.id) && !firstPhaseIds.has(p.id))
 			.sort((a, b) => {
-				const pa = phaseDefinitions.find(p => p.id === a.id);
-				const pb = phaseDefinitions.find(p => p.id === b.id);
-				const paPriority = typeof pa?.priority === 'number' ? pa.priority : 99;
-				const pbPriority = typeof pb?.priority === 'number' ? pb.priority : 99;
-				return paPriority - pbPriority;
+				const priA = getPriority(a.id);
+				const priB = getPriority(b.id);
+				if (priA !== priB) return priA - priB;
+				return getOrder(a.id) - getOrder(b.id);
 			});
 		for (const phase of ungroupedPhases) {
 			this.renderPhaseButton(phase, phaseDefinitions, this.el);

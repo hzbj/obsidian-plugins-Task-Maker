@@ -259,11 +259,28 @@ export class MatrixView extends ItemView {
 		if (this.timelineActive) {
 			this.toggleTimeline(true);
 		} else {
-			this.switchView(this.currentViewId);
+			const phases = this.viewRegistry.getPhaseViews();
+			const target = phases.some(p => p.id === this.currentViewId)
+				? this.currentViewId
+				: phases[0]?.id ?? '';
+			if (target) {
+				this.switchView(target);
+			} else {
+				this.currentViewId = '';
+			}
 		}
 	}
 
 	private switchView(viewId: string): void {
+		if (!this.viewRegistry.getView(viewId)) {
+			const fallback = this.viewRegistry.getPhaseViews()[0];
+			if (!fallback) {
+				this.currentViewId = '';
+				return;
+			}
+			viewId = fallback.id;
+		}
+
 		this.currentViewId = viewId;
 		this.navigator?.updatePhaseView(viewId);
 		// If switching to a phase from timeline, deactivate timeline
@@ -312,6 +329,7 @@ export class MatrixView extends ItemView {
 
 	private async refresh(): Promise<void> {
 		if (!this.currentViewId) return;
+		if (!this.viewRegistry.getView(this.currentViewId)) return;
 
 		// If timeline is active, re-render timeline instead
 		if (this.timelineActive) {
@@ -329,6 +347,7 @@ export class MatrixView extends ItemView {
 		}
 		// Ensure settings phases are also included
 		for (const phase of settings.phases) {
+			if (phase.archived) continue;
 			if (phase.noteFilePath && !noteToPhase.has(phase.noteFilePath)) {
 				noteToPhase.set(phase.noteFilePath, phase.id);
 			}

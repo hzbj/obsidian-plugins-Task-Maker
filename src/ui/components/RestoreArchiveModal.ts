@@ -9,12 +9,8 @@ export class RestoreArchiveModal extends Modal {
 		private archivedPhases: PhaseDefinition[],
 		private categories: ArchiveCategoryDef[],
 		private onRestore: (phaseId: string, targetPath?: string) => Promise<void>,
-<<<<<<< HEAD
-		private onClearArchive?: (phaseId: string) => Promise<void>
-=======
-		private onClear?: (phaseId: string) => Promise<void>,
+		private onClearFields?: (phaseId: string) => Promise<void>,
 		private onRenamePhase?: (phaseId: string, newLabel: string) => Promise<void>
->>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 	) {
 		super(app);
 	}
@@ -53,15 +49,11 @@ export class RestoreArchiveModal extends Modal {
 	private renderPhaseItem(containerEl: HTMLElement, phase: PhaseDefinition): void {
 		const itemEl = containerEl.createDiv({ cls: 'tm-restore-phase-item' });
 		const info = phase.archiveInfo;
-
-		// Header: phase label + category
 		const categoryLabel = info
 			? this.categories.find(c => c.code === info.categoryCode)?.label ?? info.categoryCode
 			: '未知';
 
 		const headerEl = itemEl.createDiv({ cls: 'tm-restore-phase-header' });
-
-		// Editable phase label
 		const labelEl = headerEl.createEl('strong', { cls: 'tm-restore-phase-label' });
 		labelEl.textContent = phase.label;
 		if (this.onRenamePhase) {
@@ -74,9 +66,7 @@ export class RestoreArchiveModal extends Modal {
 
 		headerEl.createSpan({ text: ` [${categoryLabel}]`, cls: 'tm-restore-phase-category' });
 
-		// Info section
 		const infoEl = itemEl.createDiv({ cls: 'tm-restore-phase-info' });
-
 		if (info) {
 			const archivedDate = new Date(info.archivedAt);
 			const dateStr = archivedDate.toLocaleDateString('zh-CN', {
@@ -89,9 +79,10 @@ export class RestoreArchiveModal extends Modal {
 
 			const fileCount = info.archivedItems.filter(i => i.type === 'file').length;
 			const folderCount = info.archivedItems.filter(i => i.type === 'folder').length;
-			let itemSummary = '';
-			if (fileCount > 0) itemSummary += `${fileCount} 个文件`;
-			if (folderCount > 0) itemSummary += `${itemSummary ? '、' : ''}${folderCount} 个文件夹`;
+			const itemSummary = [
+				fileCount > 0 ? `${fileCount} 个文件` : '',
+				folderCount > 0 ? `${folderCount} 个文件夹` : '',
+			].filter(Boolean).join('、');
 			if (itemSummary) {
 				infoEl.createDiv({ text: `包含: ${itemSummary}` });
 			}
@@ -99,14 +90,13 @@ export class RestoreArchiveModal extends Modal {
 			infoEl.createDiv({ text: '无归档详情（旧版归档）', cls: 'setting-item-description' });
 		}
 
-		// Buttons
 		const btnSetting = new Setting(itemEl);
 		btnSetting.addButton(btn => btn
 			.setButtonText('恢复到原路径')
 			.setCta()
 			.onClick(async () => {
 				await this.onRestore(phase.id);
-				this.renderSuccess(itemEl, phase.label);
+				this.renderSuccess(itemEl, `阶段「${phase.label}」已恢复`);
 			})
 		);
 		btnSetting.addButton(btn => btn
@@ -115,44 +105,28 @@ export class RestoreArchiveModal extends Modal {
 				this.showCustomPathInput(itemEl, phase);
 			})
 		);
-<<<<<<< HEAD
-		if (this.onClearArchive) {
-			const clearArchive = this.onClearArchive;
-			btnSetting.addButton(btn => btn
-				.setButtonText('清除归档记录')
-				.setWarning()
-				.onClick(async () => {
-					await clearArchive(phase.id);
-					this.renderSuccess(itemEl, phase.label);
-				})
-			);
-=======
 
-		// Clear archive button (with confirmation)
-		if (this.onClear) {
-			const isConfirming = this.clearConfirmPhases.has(phase.id);
+		if (this.onClearFields) {
 			btnSetting.addButton(btn => {
-				btn.setButtonText(isConfirming ? '确认清除' : '清除归档')
+				const isConfirming = this.clearConfirmPhases.has(phase.id);
+				btn.setButtonText(isConfirming ? '确认清除字段' : '清除字段')
 					.setWarning()
 					.onClick(async () => {
 						if (!this.clearConfirmPhases.has(phase.id)) {
 							this.clearConfirmPhases.add(phase.id);
-							btn.setButtonText('确认清除');
-						} else {
-							this.clearConfirmPhases.delete(phase.id);
-							await this.onClear!(phase.id);
-							// Re-render the modal after clearing
-							this.onOpen();
+							btn.setButtonText('确认清除字段');
+							return;
 						}
+						this.clearConfirmPhases.delete(phase.id);
+						await this.onClearFields!(phase.id);
+						this.renderSuccess(itemEl, `阶段「${phase.label}」的任务字段已清除`);
 					});
 				return btn;
 			});
->>>>>>> d3eeb63bb0cda112e193f3d22405393f2f81746d
 		}
 	}
 
 	private showCustomPathInput(itemEl: HTMLElement, phase: PhaseDefinition): void {
-		// Remove previous custom path input if exists
 		const existing = itemEl.querySelector('.tm-restore-custom-path');
 		if (existing) {
 			existing.remove();
@@ -178,7 +152,7 @@ export class RestoreArchiveModal extends Modal {
 						return;
 					}
 					await this.onRestore(phase.id, customPath);
-					this.renderSuccess(itemEl, phase.label);
+					this.renderSuccess(itemEl, `阶段「${phase.label}」已恢复`);
 				})
 			);
 	}
@@ -201,7 +175,7 @@ export class RestoreArchiveModal extends Modal {
 				await this.onRenamePhase(phase.id, newLabel);
 				phase.label = newLabel;
 			}
-			// Restore label element
+
 			const newLabelEl = document.createElement('strong');
 			newLabelEl.className = 'tm-restore-phase-label';
 			newLabelEl.textContent = newLabel || originalText;
@@ -227,11 +201,11 @@ export class RestoreArchiveModal extends Modal {
 		});
 	}
 
-	private renderSuccess(itemEl: HTMLElement, phaseLabel: string): void {
+	private renderSuccess(itemEl: HTMLElement, message: string): void {
 		itemEl.empty();
 		itemEl.createDiv({
 			cls: 'tm-restore-success',
-			text: `✓ 阶段「${phaseLabel}」已成功恢复`,
+			text: `✓ ${message}`,
 		});
 	}
 

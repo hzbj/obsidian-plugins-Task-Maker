@@ -197,7 +197,7 @@ export class SettingsTab extends PluginSettingTab {
 							},
 							async (phaseId) => {
 								const archiveService = (this.plugin as any).archiveService;
-								await archiveService.clearArchiveRecord(phaseId);
+								await archiveService.clearArchivedTaskFields(phaseId);
 								const taskScanner = (this.plugin as any).taskScanner;
 								await taskScanner.fullScan();
 								await (this.plugin as any).reconcilePhaseNotes();

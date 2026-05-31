@@ -400,6 +400,11 @@ var TaskScannerService = class {
   async scanFile(file, forceExtract = false) {
     var _a, _b;
     const settings = this.getSettings();
+    if (this.isArchivedPath(file.path, settings)) {
+      this.taskCache.delete(file.path);
+      this.detectedPhases.delete(file.path);
+      return [];
+    }
     const content = await this.app.vault.cachedRead(file);
     const cache = this.app.metadataCache.getFileCache(file);
     const hasFrontmatterTrigger = this.checkFrontmatterTrigger(cache, settings.triggerTags);
@@ -521,6 +526,21 @@ var TaskScannerService = class {
     this.taskCache.clear();
     this.detectedPhases.clear();
   }
+  isArchivedPath(filePath, settings) {
+    for (const phase of settings.phases) {
+      if (!phase.archived || !phase.archiveInfo)
+        continue;
+      for (const item of phase.archiveInfo.archivedItems) {
+        if (item.type === "file" && item.archivedPath === filePath) {
+          return true;
+        }
+        if (item.type === "folder" && filePath.startsWith(`${item.archivedPath}/`)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
   /** Detect phase definition from frontmatter properties or tags */
   detectPhaseFromFrontmatter(file, cache) {
     if (!(cache == null ? void 0 : cache.frontmatter)) {
@@ -563,7 +583,7 @@ var ViewRegistryService = class {
   }
   /** Get a view definition by its ID */
   getView(viewId) {
-    const phase = this.getSettings().phases.find((p) => p.id === viewId);
+    const phase = this.getSettings().phases.find((p) => p.id === viewId && !p.archived);
     if (phase) {
       return {
         id: phase.id,
@@ -609,7 +629,7 @@ var ViewRegistryService = class {
   }
   /** Determine the view type of a given viewId */
   getViewType(viewId) {
-    if (this.getSettings().phases.some((p) => p.id === viewId)) {
+    if (this.getSettings().phases.some((p) => p.id === viewId && !p.archived)) {
       return "phase";
     }
     return void 0;
@@ -625,19 +645,14 @@ var ArchiveService = class {
     this.getSettings = getSettings;
     this.saveSettings = saveSettings;
   }
-  /**
-   * Build archive folder name: "YYYY.MM_categoryCode.phaseLabel"
-   */
+  /** Build archive folder name: "YYYY.MM_categoryCode.phaseLabel" */
   buildArchiveFolderName(categoryCode, phaseLabel) {
     const now = /* @__PURE__ */ new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
     return `${year}.${month}_${categoryCode}.${phaseLabel}`;
   }
-  /**
-   * Archive a phase: create archive folder, move note files, remove phase from settings.
-   * Returns the archive folder path.
-   */
+  /** Archive a phase by moving selected files/folders and recording archive metadata. */
   async archivePhase(phaseId, categoryCode, phaseLabel, noteFiles, folders = []) {
     const settings = this.getSettings();
     const basePath = settings.archiveBasePath || "\u5F52\u6863";
@@ -647,32 +662,31 @@ var ArchiveService = class {
     await this.ensureFolder(archivePath);
     const archivedItems = [];
     for (const folderPath of folders) {
-      const movedCount2 = await this.moveFolder(folderPath, `${archivePath}/${folderPath.split("/").pop()}`);
+      const targetPath = `${archivePath}/${folderPath.split("/").pop()}`;
+      await this.moveFolder(folderPath, targetPath);
       archivedItems.push({
         type: "folder",
         originalPath: folderPath,
-        archivedPath: `${archivePath}/${folderPath.split("/").pop()}`
+        archivedPath: targetPath
       });
     }
-    const movedFolderPrefixes = folders.map((f) => f + "/");
+    const movedFolderPrefixes = folders.map((f) => `${f}/`);
     const remainingFiles = noteFiles.filter((f) => !movedFolderPrefixes.some((prefix) => f.startsWith(prefix)));
-    let movedCount = 0;
     for (const filePath of remainingFiles) {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian3.TFile) {
-        const newPath = `${archivePath}/${file.name}`;
-        try {
-          await this.app.fileManager.renameFile(file, newPath);
-          archivedItems.push({
-            type: "file",
-            originalPath: filePath,
-            archivedPath: newPath
-          });
-          movedCount++;
-        } catch (e) {
-          console.error(`Failed to archive file ${filePath}:`, e);
-          new import_obsidian3.Notice(`\u5F52\u6863\u6587\u4EF6\u5931\u8D25: ${file.name}`);
-        }
+      if (!(file instanceof import_obsidian3.TFile))
+        continue;
+      const newPath = `${archivePath}/${file.name}`;
+      try {
+        await this.app.fileManager.renameFile(file, newPath);
+        archivedItems.push({
+          type: "file",
+          originalPath: filePath,
+          archivedPath: newPath
+        });
+      } catch (e) {
+        console.error(`Failed to archive file ${filePath}:`, e);
+        new import_obsidian3.Notice(`\u5F52\u6863\u6587\u4EF6\u5931\u8D25: ${file.name}`);
       }
     }
     const archivedPhase = settings.phases.find((p) => p.id === phaseId);
@@ -688,19 +702,16 @@ var ArchiveService = class {
     }
     await this.saveSettings();
     this.eventBus.emit("phase-archived", { phaseId, archivePath });
-    const totalMoved = archivedItems.length;
-    new import_obsidian3.Notice(`\u9636\u6BB5\u300C${phaseLabel}\u300D\u5DF2\u5F52\u6863\uFF0C\u79FB\u52A8\u4E86 ${totalMoved} \u4E2A\u9879\u76EE\u5230 ${archivePath}`);
+    new import_obsidian3.Notice(`\u9636\u6BB5\u300C${phaseLabel}\u300D\u5DF2\u5F52\u6863\uFF0C\u79FB\u52A8\u4E86 ${archivedItems.length} \u4E2A\u9879\u76EE\u5230 ${archivePath}`);
     return archivePath;
   }
-  /**
-   * Delete a phase: remove from settings and delete associated note files.
-   */
+  /** Delete a phase and selected associated files/folders. */
   async deletePhase(phaseId, noteFiles = [], folders = []) {
     var _a;
     const settings = this.getSettings();
     const phase = settings.phases.find((p) => p.id === phaseId);
     const label = (_a = phase == null ? void 0 : phase.label) != null ? _a : phaseId;
-    const deletedFolderPrefixes = folders.map((f) => f + "/");
+    const deletedFolderPrefixes = folders.map((f) => `${f}/`);
     for (const folderPath of folders) {
       const folder = this.app.vault.getAbstractFileByPath(folderPath);
       if (folder instanceof import_obsidian3.TFolder) {
@@ -731,13 +742,11 @@ var ArchiveService = class {
     this.eventBus.emit("phase-deleted", { phaseId });
     const folderInfo = folders.length > 0 ? `${folders.length} \u4E2A\u6587\u4EF6\u5939` : "";
     const fileInfo = deletedCount > 0 ? `${deletedCount} \u4E2A\u7B14\u8BB0` : "";
-    const separator = folderInfo && fileInfo ? "\u548C " : "";
+    const separator = folderInfo && fileInfo ? "\u548C" : "";
     const deletedInfo = folderInfo || fileInfo ? `\uFF0C\u79FB\u9664\u4E86 ${folderInfo}${separator}${fileInfo}` : "";
     new import_obsidian3.Notice(`\u9636\u6BB5\u300C${label}\u300D\u5DF2\u5220\u9664${deletedInfo}`);
   }
-  /**
-   * Restore a previously archived phase back to its original locations.
-   */
+  /** Restore a previously archived phase back to its original locations. */
   async restorePhase(phaseId, targetBasePath) {
     const settings = this.getSettings();
     const phase = settings.phases.find((p) => p.id === phaseId);
@@ -783,11 +792,23 @@ var ArchiveService = class {
     this.eventBus.emit("phase-restored", { phaseId, restoredPaths });
     new import_obsidian3.Notice(`\u9636\u6BB5\u300C${phase.label}\u300D\u5DF2\u6062\u590D\uFF0C\u8FD8\u539F\u4E86 ${restoredPaths.length} \u4E2A\u9879\u76EE`);
   }
-  /**
-   * Clear archive record for a phase (remove archived flag and archiveInfo).
-   * This does NOT move files back — it only cleans the metadata, useful when
-   * the archive files have already been handled externally.
-   */
+  /** Clear Task Maker fields from archived Markdown files without deleting files or archive records. */
+  async clearArchivedTaskFields(phaseId) {
+    const settings = this.getSettings();
+    const phase = settings.phases.find((p) => p.id === phaseId);
+    if (!phase || !phase.archived) {
+      new import_obsidian3.Notice("\u672A\u627E\u5230\u5DF2\u5F52\u6863\u7684\u9636\u6BB5");
+      return;
+    }
+    const files = this.getArchivedMarkdownFiles(phase);
+    let cleaned = 0;
+    for (const file of files) {
+      await this.clearTaskMakerFields(file, phaseId);
+      cleaned++;
+    }
+    new import_obsidian3.Notice(`\u5DF2\u6E05\u9664 ${cleaned} \u4E2A\u5F52\u6863\u7B14\u8BB0\u4E2D\u7684\u4EFB\u52A1\u5B57\u6BB5`);
+  }
+  /** Metadata-only archive record clear; kept for compatibility and not used by the archive modal. */
   async clearArchiveRecord(phaseId) {
     const settings = this.getSettings();
     const phase = settings.phases.find((p) => p.id === phaseId);
@@ -801,13 +822,64 @@ var ArchiveService = class {
     this.eventBus.emit("phase-restored", { phaseId, restoredPaths: [] });
     new import_obsidian3.Notice(`\u5DF2\u6E05\u9664\u9636\u6BB5\u300C${phase.label}\u300D\u7684\u5F52\u6863\u8BB0\u5F55`);
   }
-  /**
-   * Get all archived phases.
-   */
+  /** Get all archived phases. */
   getArchivedPhases() {
     return this.getSettings().phases.filter((p) => p.archived === true);
   }
-  /** Ensure a folder exists, creating it recursively if needed */
+  getArchivedMarkdownFiles(phase) {
+    const files = [];
+    const archiveInfo = phase.archiveInfo;
+    if (!archiveInfo)
+      return files;
+    for (const item of archiveInfo.archivedItems) {
+      const entry = this.app.vault.getAbstractFileByPath(item.archivedPath);
+      if (entry instanceof import_obsidian3.TFile && entry.extension === "md") {
+        files.push(entry);
+      } else if (entry instanceof import_obsidian3.TFolder) {
+        this.collectMarkdownFiles(entry, files);
+      }
+    }
+    return files;
+  }
+  collectMarkdownFiles(folder, files) {
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian3.TFile && child.extension === "md") {
+        files.push(child);
+      } else if (child instanceof import_obsidian3.TFolder) {
+        this.collectMarkdownFiles(child, files);
+      }
+    }
+  }
+  async clearTaskMakerFields(file, phaseId) {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (cache == null ? void 0 : cache.frontmatter) {
+      await this.app.fileManager.processFrontMatter(file, (fm) => {
+        delete fm.phase;
+        delete fm["phase-id"];
+        delete fm["phase-label"];
+        delete fm["phase-start"];
+        delete fm["phase-end"];
+      });
+    }
+    const tagRegex = this.buildPhaseTagRegex(phaseId);
+    await this.app.vault.process(file, (content) => {
+      return content.split("\n").map((line) => this.removePhaseTagsFromLine(line, tagRegex)).join("\n");
+    });
+  }
+  buildPhaseTagRegex(phaseId) {
+    const namespace = this.getSettings().tagNamespace.trim();
+    const prefix = namespace ? `${this.escapeRegex(namespace)}/` : "";
+    return new RegExp(`\\s*#${prefix}${this.escapeRegex(phaseId)}-(ui|in|un|nn|p1|p2)\\b`, "g");
+  }
+  removePhaseTagsFromLine(line, tagRegex) {
+    const match = /^(\s*)(.*)$/.exec(line);
+    if (!match)
+      return line;
+    const [, leading, body] = match;
+    tagRegex.lastIndex = 0;
+    const cleanedBody = body.replace(tagRegex, "").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, "");
+    return `${leading}${cleanedBody}`;
+  }
   async ensureFolder(path) {
     const existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof import_obsidian3.TFolder)
@@ -832,16 +904,7 @@ var ArchiveService = class {
     await this.ensureFolder(targetPath);
     let movedCount = 0;
     const files = [];
-    const collectFiles = (folder) => {
-      for (const child of folder.children) {
-        if (child instanceof import_obsidian3.TFile) {
-          files.push(child);
-        } else if (child instanceof import_obsidian3.TFolder) {
-          collectFiles(child);
-        }
-      }
-    };
-    collectFiles(sourceFolder);
+    this.collectAllFiles(sourceFolder, files);
     for (const file of files) {
       const relativePath = file.path.substring(sourcePath.length + 1);
       const newPath = `${targetPath}/${relativePath}`;
@@ -859,6 +922,15 @@ var ArchiveService = class {
     await this.cleanEmptyFolder(sourcePath);
     return movedCount;
   }
+  collectAllFiles(folder, files) {
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian3.TFile) {
+        files.push(child);
+      } else if (child instanceof import_obsidian3.TFolder) {
+        this.collectAllFiles(child, files);
+      }
+    }
+  }
   async cleanEmptyFolder(path) {
     const folder = this.app.vault.getAbstractFileByPath(path);
     if (!(folder instanceof import_obsidian3.TFolder))
@@ -869,6 +941,9 @@ var ArchiveService = class {
       } catch (e) {
       }
     }
+  }
+  escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 };
 
@@ -1008,45 +1083,35 @@ var PhaseSelector = class {
     const settings = this.getSettings();
     const phaseGroups = [...settings.phaseGroups].sort((a, b) => a.order - b.order);
     const phaseDefinitions = this.getPhases();
+    const getPhaseDef = (phaseId) => phaseDefinitions.find((p) => p.id === phaseId);
+    const getPriority = (phaseId) => {
+      var _a;
+      const raw = (_a = getPhaseDef(phaseId)) == null ? void 0 : _a.priority;
+      return typeof raw === "number" ? raw : parseInt(raw, 10) || 999;
+    };
+    const getOrder = (phaseId) => {
+      var _a, _b;
+      return (_b = (_a = getPhaseDef(phaseId)) == null ? void 0 : _a.order) != null ? _b : 0;
+    };
     const groupedPhaseIds = /* @__PURE__ */ new Set();
     for (const group of phaseGroups) {
       for (const pid of group.phaseIds) {
         groupedPhaseIds.add(pid);
       }
     }
-    const priorityPhases = this.getPhases();
-    const hasPriority1Phase = (group) => {
-      return group.phaseIds.some((pid) => {
-        const p = priorityPhases.find((ph) => ph.id === pid);
-        if (!p)
-          return false;
-        const pri = typeof p.priority === "number" ? p.priority : parseInt(p.priority, 10);
-        return pri === 1;
-      });
-    };
-    phaseGroups.sort((a, b) => {
-      const aTop = hasPriority1Phase(a);
-      const bTop = hasPriority1Phase(b);
-      if (aTop && !bTop)
-        return -1;
-      if (!aTop && bTop)
-        return 1;
-      return a.order - b.order;
-    });
+    const firstPhaseIds = new Set(
+      phases.filter((phase) => getPriority(phase.id) === 1).sort((a, b) => getOrder(a.id) - getOrder(b.id)).map((phase) => phase.id)
+    );
+    for (const phase of phases.filter((p) => firstPhaseIds.has(p.id))) {
+      this.renderPhaseButton(phase, phaseDefinitions, this.el);
+    }
     const sortPhaseIds = (ids) => {
       return [...ids].sort((a, b) => {
-        var _a, _b;
-        const pa = priorityPhases.find((ph) => ph.id === a);
-        const pb = priorityPhases.find((ph) => ph.id === b);
-        const priA = typeof (pa == null ? void 0 : pa.priority) === "number" ? pa.priority : parseInt(pa == null ? void 0 : pa.priority, 10);
-        const priB = typeof (pb == null ? void 0 : pb.priority) === "number" ? pb.priority : parseInt(pb == null ? void 0 : pb.priority, 10);
-        const isFirstA = priA === 1;
-        const isFirstB = priB === 1;
-        if (isFirstA && !isFirstB)
-          return -1;
-        if (!isFirstA && isFirstB)
-          return 1;
-        return ((_a = pa == null ? void 0 : pa.order) != null ? _a : 0) - ((_b = pb == null ? void 0 : pb.order) != null ? _b : 0);
+        const priA = getPriority(a);
+        const priB = getPriority(b);
+        if (priA !== priB)
+          return priA - priB;
+        return getOrder(a) - getOrder(b);
       });
     };
     for (const group of phaseGroups) {
@@ -1060,15 +1125,22 @@ var PhaseSelector = class {
         e.dataTransfer.effectAllowed = "move";
       });
       this.setupGroupDropZone(groupEl, group.id);
-      const sortedPhaseIds = sortPhaseIds(group.phaseIds);
-      for (const phaseId of sortedPhaseIds) {
+      for (const phaseId of sortPhaseIds(group.phaseIds)) {
+        if (firstPhaseIds.has(phaseId))
+          continue;
         const phase = phases.find((p) => p.id === phaseId);
         if (phase) {
           this.renderPhaseButton(phase, phaseDefinitions, groupEl);
         }
       }
     }
-    const ungroupedPhases = phases.filter((p) => !groupedPhaseIds.has(p.id));
+    const ungroupedPhases = phases.filter((p) => !groupedPhaseIds.has(p.id) && !firstPhaseIds.has(p.id)).sort((a, b) => {
+      const priA = getPriority(a.id);
+      const priB = getPriority(b.id);
+      if (priA !== priB)
+        return priA - priB;
+      return getOrder(a.id) - getOrder(b.id);
+    });
     for (const phase of ungroupedPhases) {
       this.renderPhaseButton(phase, phaseDefinitions, this.el);
     }
@@ -2806,7 +2878,7 @@ var MatrixView = class extends import_obsidian9.ItemView {
     });
   }
   rebuildUI() {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     (_a = this.phaseNotePanel) == null ? void 0 : _a.destroy();
     (_b = this.timelineOverview) == null ? void 0 : _b.destroy();
     (_c = this.inlineTimeline) == null ? void 0 : _c.destroy();
@@ -2814,11 +2886,25 @@ var MatrixView = class extends import_obsidian9.ItemView {
     if (this.timelineActive) {
       this.toggleTimeline(true);
     } else {
-      this.switchView(this.currentViewId);
+      const phases = this.viewRegistry.getPhaseViews();
+      const target = phases.some((p) => p.id === this.currentViewId) ? this.currentViewId : (_e = (_d = phases[0]) == null ? void 0 : _d.id) != null ? _e : "";
+      if (target) {
+        this.switchView(target);
+      } else {
+        this.currentViewId = "";
+      }
     }
   }
   switchView(viewId) {
     var _a, _b, _c, _d, _e, _f;
+    if (!this.viewRegistry.getView(viewId)) {
+      const fallback = this.viewRegistry.getPhaseViews()[0];
+      if (!fallback) {
+        this.currentViewId = "";
+        return;
+      }
+      viewId = fallback.id;
+    }
     this.currentViewId = viewId;
     (_a = this.navigator) == null ? void 0 : _a.updatePhaseView(viewId);
     if (this.timelineActive) {
@@ -2878,6 +2964,8 @@ var MatrixView = class extends import_obsidian9.ItemView {
     var _a, _b, _c, _d, _e;
     if (!this.currentViewId)
       return;
+    if (!this.viewRegistry.getView(this.currentViewId))
+      return;
     if (this.timelineActive) {
       (_a = this.timelineOverview) == null ? void 0 : _a.render(this.getSettings().phases);
       return;
@@ -2888,6 +2976,8 @@ var MatrixView = class extends import_obsidian9.ItemView {
       noteToPhase.set(phaseNote.filePath, phaseNote.phaseId);
     }
     for (const phase of settings.phases) {
+      if (phase.archived)
+        continue;
       if (phase.noteFilePath && !noteToPhase.has(phase.noteFilePath)) {
         noteToPhase.set(phase.noteFilePath, phase.id);
       }
@@ -2934,12 +3024,14 @@ var import_obsidian11 = require("obsidian");
 // src/ui/components/RestoreArchiveModal.ts
 var import_obsidian10 = require("obsidian");
 var RestoreArchiveModal = class extends import_obsidian10.Modal {
-  constructor(app, archivedPhases, categories, onRestore, onClearArchive) {
+  constructor(app, archivedPhases, categories, onRestore, onClearFields, onRenamePhase) {
     super(app);
     this.archivedPhases = archivedPhases;
     this.categories = categories;
     this.onRestore = onRestore;
-    this.onClearArchive = onClearArchive;
+    this.onClearFields = onClearFields;
+    this.onRenamePhase = onRenamePhase;
+    this.clearConfirmPhases = /* @__PURE__ */ new Set();
   }
   onOpen() {
     const { contentEl } = this;
@@ -2969,7 +3061,15 @@ var RestoreArchiveModal = class extends import_obsidian10.Modal {
     const info = phase.archiveInfo;
     const categoryLabel = info ? (_b = (_a = this.categories.find((c) => c.code === info.categoryCode)) == null ? void 0 : _a.label) != null ? _b : info.categoryCode : "\u672A\u77E5";
     const headerEl = itemEl.createDiv({ cls: "tm-restore-phase-header" });
-    headerEl.createEl("strong", { text: phase.label });
+    const labelEl = headerEl.createEl("strong", { cls: "tm-restore-phase-label" });
+    labelEl.textContent = phase.label;
+    if (this.onRenamePhase) {
+      labelEl.title = "\u70B9\u51FB\u7F16\u8F91\u9879\u76EE\u540D\u79F0";
+      labelEl.style.cursor = "pointer";
+      labelEl.addEventListener("click", () => {
+        this.startInlineEdit(labelEl, phase);
+      });
+    }
     headerEl.createSpan({ text: ` [${categoryLabel}]`, cls: "tm-restore-phase-category" });
     const infoEl = itemEl.createDiv({ cls: "tm-restore-phase-info" });
     if (info) {
@@ -2983,11 +3083,10 @@ var RestoreArchiveModal = class extends import_obsidian10.Modal {
       infoEl.createDiv({ text: `\u5F52\u6863\u8DEF\u5F84: ${info.archivePath}` });
       const fileCount = info.archivedItems.filter((i) => i.type === "file").length;
       const folderCount = info.archivedItems.filter((i) => i.type === "folder").length;
-      let itemSummary = "";
-      if (fileCount > 0)
-        itemSummary += `${fileCount} \u4E2A\u6587\u4EF6`;
-      if (folderCount > 0)
-        itemSummary += `${itemSummary ? "\u3001" : ""}${folderCount} \u4E2A\u6587\u4EF6\u5939`;
+      const itemSummary = [
+        fileCount > 0 ? `${fileCount} \u4E2A\u6587\u4EF6` : "",
+        folderCount > 0 ? `${folderCount} \u4E2A\u6587\u4EF6\u5939` : ""
+      ].filter(Boolean).join("\u3001");
       if (itemSummary) {
         infoEl.createDiv({ text: `\u5305\u542B: ${itemSummary}` });
       }
@@ -2998,7 +3097,7 @@ var RestoreArchiveModal = class extends import_obsidian10.Modal {
     btnSetting.addButton(
       (btn) => btn.setButtonText("\u6062\u590D\u5230\u539F\u8DEF\u5F84").setCta().onClick(async () => {
         await this.onRestore(phase.id);
-        this.renderSuccess(itemEl, phase.label);
+        this.renderSuccess(itemEl, `\u9636\u6BB5\u300C${phase.label}\u300D\u5DF2\u6062\u590D`);
       })
     );
     btnSetting.addButton(
@@ -3006,14 +3105,21 @@ var RestoreArchiveModal = class extends import_obsidian10.Modal {
         this.showCustomPathInput(itemEl, phase);
       })
     );
-    if (this.onClearArchive) {
-      const clearArchive = this.onClearArchive;
-      btnSetting.addButton(
-        (btn) => btn.setButtonText("\u6E05\u9664\u5F52\u6863\u8BB0\u5F55").setWarning().onClick(async () => {
-          await clearArchive(phase.id);
-          this.renderSuccess(itemEl, phase.label);
-        })
-      );
+    if (this.onClearFields) {
+      btnSetting.addButton((btn) => {
+        const isConfirming = this.clearConfirmPhases.has(phase.id);
+        btn.setButtonText(isConfirming ? "\u786E\u8BA4\u6E05\u9664\u5B57\u6BB5" : "\u6E05\u9664\u5B57\u6BB5").setWarning().onClick(async () => {
+          if (!this.clearConfirmPhases.has(phase.id)) {
+            this.clearConfirmPhases.add(phase.id);
+            btn.setButtonText("\u786E\u8BA4\u6E05\u9664\u5B57\u6BB5");
+            return;
+          }
+          this.clearConfirmPhases.delete(phase.id);
+          await this.onClearFields(phase.id);
+          this.renderSuccess(itemEl, `\u9636\u6BB5\u300C${phase.label}\u300D\u7684\u4EFB\u52A1\u5B57\u6BB5\u5DF2\u6E05\u9664`);
+        });
+        return btn;
+      });
     }
   }
   showCustomPathInput(itemEl, phase) {
@@ -3035,15 +3141,54 @@ var RestoreArchiveModal = class extends import_obsidian10.Modal {
           return;
         }
         await this.onRestore(phase.id, customPath);
-        this.renderSuccess(itemEl, phase.label);
+        this.renderSuccess(itemEl, `\u9636\u6BB5\u300C${phase.label}\u300D\u5DF2\u6062\u590D`);
       })
     );
   }
-  renderSuccess(itemEl, phaseLabel) {
+  startInlineEdit(labelEl, phase) {
+    const originalText = labelEl.textContent || "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = originalText;
+    input.className = "tm-restore-phase-label-input";
+    input.style.cssText = "font-weight:bold;font-size:inherit;font-family:inherit;border:1px solid var(--interactive-accent);border-radius:4px;padding:2px 6px;background:var(--background-primary);color:var(--text-normal);";
+    labelEl.replaceWith(input);
+    input.focus();
+    input.select();
+    const finishEdit = async () => {
+      const newLabel = input.value.trim();
+      if (newLabel && newLabel !== originalText && this.onRenamePhase) {
+        await this.onRenamePhase(phase.id, newLabel);
+        phase.label = newLabel;
+      }
+      const newLabelEl = document.createElement("strong");
+      newLabelEl.className = "tm-restore-phase-label";
+      newLabelEl.textContent = newLabel || originalText;
+      newLabelEl.title = "\u70B9\u51FB\u7F16\u8F91\u9879\u76EE\u540D\u79F0";
+      newLabelEl.style.cursor = "pointer";
+      newLabelEl.addEventListener("click", () => {
+        this.startInlineEdit(newLabelEl, phase);
+      });
+      input.replaceWith(newLabelEl);
+    };
+    input.addEventListener("blur", finishEdit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        input.blur();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        input.value = originalText;
+        input.blur();
+      }
+    });
+  }
+  renderSuccess(itemEl, message) {
     itemEl.empty();
     itemEl.createDiv({
       cls: "tm-restore-success",
-      text: `\u2713 \u9636\u6BB5\u300C${phaseLabel}\u300D\u5DF2\u6210\u529F\u6062\u590D`
+      text: `\u2713 ${message}`
     });
   }
   onClose() {
@@ -3159,7 +3304,7 @@ var SettingsTab = class extends import_obsidian11.PluginSettingTab {
             },
             async (phaseId) => {
               const archiveService = this.plugin.archiveService;
-              await archiveService.clearArchiveRecord(phaseId);
+              await archiveService.clearArchivedTaskFields(phaseId);
               const taskScanner = this.plugin.taskScanner;
               await taskScanner.fullScan();
               await this.plugin.reconcilePhaseNotes();
@@ -3818,6 +3963,8 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
       const info = infos[0];
       const existing = settings.phases.find((p) => p.id === phaseId);
       if (existing) {
+        if (existing.archived)
+          continue;
         if (!existing.noteFilePath || !infos.some((i) => i.filePath === existing.noteFilePath)) {
           existing.noteFilePath = info.filePath;
           changed = true;
@@ -3861,6 +4008,8 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
       }
     }
     settings.phases = settings.phases.filter((p) => {
+      if (p.archived)
+        return true;
       if (!p.autoDetected)
         return true;
       if (detectedById.has(p.id))
@@ -4037,9 +4186,16 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
         await this.reconcilePhaseNotes();
       },
       async (phaseId) => {
-        await this.archiveService.clearArchiveRecord(phaseId);
+        await this.archiveService.clearArchivedTaskFields(phaseId);
         await this.taskScanner.fullScan();
         await this.reconcilePhaseNotes();
+      },
+      async (phaseId, newLabel) => {
+        const phase = this.settings.phases.find((p) => p.id === phaseId);
+        if (phase) {
+          phase.label = newLabel;
+          await this.saveSettings();
+        }
       }
     ).open();
   }
