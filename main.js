@@ -31,6 +31,8 @@ var import_obsidian14 = require("obsidian");
 
 // src/models/constants.ts
 var VIEW_TYPE_MATRIX = "task-maker-matrix";
+var TASK_MAKER_DATA_FOLDER = "task-maker-data";
+var TASK_MAKER_INDEX_FILE = `${TASK_MAKER_DATA_FOLDER}/index.json`;
 var QUADRANT_CODES = ["ui", "in", "un", "nn"];
 var CHECKBOX_REGEX = /^(\s*- \[)([ xX])(\]\s+)(.+)$/;
 var DEFAULT_SETTINGS = {
@@ -947,6 +949,200 @@ var ArchiveService = class {
   }
   escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+};
+
+// src/services/TaskMakerStorageManager.ts
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function numberOrDefault(value, fallback) {
+  return typeof value === "number" ? value : fallback;
+}
+function booleanOrDefault(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+function stringOrDefault(value, fallback) {
+  return typeof value === "string" ? value : fallback;
+}
+function arrayOrDefault(value, fallback) {
+  return clone(Array.isArray(value) ? value : fallback);
+}
+function toVaultSettingsData(settings) {
+  return {
+    version: 1,
+    triggerTags: clone(settings.triggerTags),
+    tagNamespace: settings.tagNamespace,
+    phases: clone(settings.phases),
+    phaseGroups: clone(settings.phaseGroups),
+    defaultSubdivisionUnit: settings.defaultSubdivisionUnit,
+    archiveBasePath: settings.archiveBasePath,
+    archiveCategories: clone(settings.archiveCategories),
+    quadrantLabels: clone(settings.ui.quadrantLabels)
+  };
+}
+function toLocalSettingsData(settings, migrated = true) {
+  return {
+    migrated,
+    ui: {
+      quadrantColors: clone(settings.ui.quadrantColors),
+      showSourceFile: settings.ui.showSourceFile,
+      compactMode: settings.ui.compactMode,
+      notePanel: clone(settings.ui.notePanel),
+      showOverviewSubdivisions: settings.ui.showOverviewSubdivisions,
+      showOverviewCustomSegments: settings.ui.showOverviewCustomSegments,
+      deadlineWarningDays: settings.ui.deadlineWarningDays
+    }
+  };
+}
+function normalizeLocalSettingsData(raw) {
+  var _a, _b, _c;
+  const data = isRecord(raw) ? raw : {};
+  const ui = (_a = data.ui) != null ? _a : {};
+  const defaultUi = DEFAULT_SETTINGS.ui;
+  return {
+    migrated: booleanOrDefault(data.migrated, false),
+    ui: {
+      quadrantColors: {
+        ...clone(defaultUi.quadrantColors),
+        ...(_b = ui.quadrantColors) != null ? _b : {}
+      },
+      showSourceFile: booleanOrDefault(ui.showSourceFile, defaultUi.showSourceFile),
+      compactMode: booleanOrDefault(ui.compactMode, defaultUi.compactMode),
+      notePanel: {
+        ...clone(defaultUi.notePanel),
+        ...(_c = ui.notePanel) != null ? _c : {}
+      },
+      showOverviewSubdivisions: booleanOrDefault(
+        ui.showOverviewSubdivisions,
+        defaultUi.showOverviewSubdivisions
+      ),
+      showOverviewCustomSegments: booleanOrDefault(
+        ui.showOverviewCustomSegments,
+        defaultUi.showOverviewCustomSegments
+      ),
+      deadlineWarningDays: numberOrDefault(
+        ui.deadlineWarningDays,
+        defaultUi.deadlineWarningDays
+      )
+    }
+  };
+}
+function normalizeVaultSettingsData(raw) {
+  var _a, _b, _c, _d;
+  const data = isRecord(raw) ? raw : {};
+  const oldUi = (_a = data.ui) != null ? _a : {};
+  return {
+    version: 1,
+    triggerTags: arrayOrDefault(data.triggerTags, DEFAULT_SETTINGS.triggerTags),
+    tagNamespace: stringOrDefault(data.tagNamespace, DEFAULT_SETTINGS.tagNamespace),
+    phases: arrayOrDefault(data.phases, DEFAULT_SETTINGS.phases),
+    phaseGroups: arrayOrDefault(data.phaseGroups, DEFAULT_SETTINGS.phaseGroups),
+    defaultSubdivisionUnit: (_b = data.defaultSubdivisionUnit) != null ? _b : DEFAULT_SETTINGS.defaultSubdivisionUnit,
+    archiveBasePath: stringOrDefault(data.archiveBasePath, DEFAULT_SETTINGS.archiveBasePath),
+    archiveCategories: arrayOrDefault(data.archiveCategories, DEFAULT_SETTINGS.archiveCategories),
+    quadrantLabels: {
+      ...clone(DEFAULT_SETTINGS.ui.quadrantLabels),
+      ...(_d = (_c = data.quadrantLabels) != null ? _c : oldUi.quadrantLabels) != null ? _d : {}
+    }
+  };
+}
+function mergeSettings(vaultSettings, localSettings) {
+  return {
+    ...clone(DEFAULT_SETTINGS),
+    triggerTags: clone(vaultSettings.triggerTags),
+    tagNamespace: vaultSettings.tagNamespace,
+    phases: clone(vaultSettings.phases),
+    phaseGroups: clone(vaultSettings.phaseGroups),
+    defaultSubdivisionUnit: vaultSettings.defaultSubdivisionUnit,
+    archiveBasePath: vaultSettings.archiveBasePath,
+    archiveCategories: clone(vaultSettings.archiveCategories),
+    ui: {
+      ...clone(DEFAULT_SETTINGS.ui),
+      ...clone(localSettings.ui),
+      quadrantLabels: {
+        ...clone(DEFAULT_SETTINGS.ui.quadrantLabels),
+        ...clone(vaultSettings.quadrantLabels)
+      },
+      quadrantColors: {
+        ...clone(DEFAULT_SETTINGS.ui.quadrantColors),
+        ...clone(localSettings.ui.quadrantColors)
+      },
+      notePanel: {
+        ...clone(DEFAULT_SETTINGS.ui.notePanel),
+        ...clone(localSettings.ui.notePanel)
+      }
+    }
+  };
+}
+var TaskMakerStorageManager = class {
+  constructor(app) {
+    this.app = app;
+    this.vaultSettings = normalizeVaultSettingsData(void 0);
+    this.savingPaths = /* @__PURE__ */ new Set();
+    this.loadError = null;
+  }
+  isSavingPath(path) {
+    return this.savingPaths.has(path);
+  }
+  hasLoadError() {
+    return this.loadError !== null;
+  }
+  getLoadError() {
+    return this.loadError;
+  }
+  getSettings() {
+    return clone(this.vaultSettings);
+  }
+  async initialize(legacyData) {
+    const adapter = this.app.vault.adapter;
+    const exists = await adapter.exists(TASK_MAKER_INDEX_FILE);
+    if (exists) {
+      await this.reloadIndex();
+      return;
+    }
+    this.vaultSettings = normalizeVaultSettingsData(legacyData);
+    await this.writeIndex(this.vaultSettings);
+  }
+  async reloadIndex() {
+    try {
+      const raw = await this.app.vault.adapter.read(TASK_MAKER_INDEX_FILE);
+      this.vaultSettings = normalizeVaultSettingsData(JSON.parse(raw));
+      this.loadError = null;
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.loadError = err;
+      this.vaultSettings = normalizeVaultSettingsData(void 0);
+      console.error(`[TaskMaker] Failed to load ${TASK_MAKER_INDEX_FILE}:`, err);
+    }
+  }
+  async saveSettings(settings) {
+    if (this.loadError) {
+      throw new Error(`Refusing to overwrite unreadable ${TASK_MAKER_INDEX_FILE}: ${this.loadError.message}`);
+    }
+    const data = toVaultSettingsData(settings);
+    await this.writeIndex(data);
+    this.vaultSettings = clone(data);
+  }
+  async writeIndex(data) {
+    await this.writeFile(TASK_MAKER_INDEX_FILE, JSON.stringify(data, null, 2));
+  }
+  async writeFile(path, content) {
+    this.savingPaths.add(path);
+    try {
+      const folderPath = path.substring(0, path.lastIndexOf("/"));
+      if (folderPath && !await this.app.vault.adapter.exists(folderPath)) {
+        await this.app.vault.adapter.mkdir(folderPath);
+      }
+      await this.app.vault.adapter.write(path, content);
+    } finally {
+      setTimeout(() => {
+        this.savingPaths.delete(path);
+      }, 500);
+    }
   }
 };
 
@@ -3819,6 +4015,7 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
     this.settings = DEFAULT_SETTINGS;
     this.eventBus = new EventBus();
     this.reconcileTimer = null;
+    this.localSettings = normalizeLocalSettingsData(void 0);
   }
   async onload() {
     await this.loadSettings();
@@ -3885,7 +4082,17 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
     ));
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
-        if (file instanceof import_obsidian14.TFile && file.extension === "md") {
+        if (!(file instanceof import_obsidian14.TFile))
+          return;
+        if (file.path === TASK_MAKER_INDEX_FILE) {
+          if (this.storageManager.isSavingPath(file.path))
+            return;
+          this.handleExternalSettingsChange().catch((e) => {
+            console.error("[TaskMaker] Failed to reload vault settings:", e);
+          });
+          return;
+        }
+        if (file.extension === "md") {
           this.taskScanner.incrementalScan(file);
         }
       })
@@ -3909,6 +4116,20 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
     this.taskScanner.clearCache();
   }
   async loadSettings() {
+    const data = await this.loadData();
+    this.localSettings = normalizeLocalSettingsData(data);
+    this.storageManager = new TaskMakerStorageManager(this.app);
+    await this.storageManager.initialize(data);
+    if (this.storageManager.hasLoadError()) {
+      new import_obsidian14.Notice(`Task Maker \u65E0\u6CD5\u8BFB\u53D6 ${TASK_MAKER_INDEX_FILE}\uFF0C\u5DF2\u4F7F\u7528\u9ED8\u8BA4\u4E1A\u52A1\u6570\u636E`);
+    }
+    if (!this.localSettings.migrated) {
+      this.localSettings.migrated = true;
+      await this.saveData(this.localSettings);
+    }
+    this.settings = mergeSettings(this.storageManager.getSettings(), this.localSettings);
+  }
+  async loadLegacySettings() {
     var _a, _b, _c;
     const data = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
@@ -3944,6 +4165,32 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
     }
   }
   async saveSettings() {
+    this.localSettings = toLocalSettingsData(this.settings);
+    await this.saveData(this.localSettings);
+    try {
+      await this.storageManager.saveSettings(this.settings);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error("[TaskMaker] Failed to save vault settings:", e);
+      new import_obsidian14.Notice(`Task Maker \u4E1A\u52A1\u6570\u636E\u4FDD\u5B58\u5931\u8D25: ${message}`);
+    }
+    this.eventBus.emit("settings-changed", { settings: this.settings });
+  }
+  async handleExternalSettingsChange() {
+    var _a;
+    await this.storageManager.reloadIndex();
+    this.settings = mergeSettings(this.storageManager.getSettings(), this.localSettings);
+    if (this.storageManager.hasLoadError()) {
+      const error = this.storageManager.getLoadError();
+      new import_obsidian14.Notice(`Task Maker \u65E0\u6CD5\u8BFB\u53D6 ${TASK_MAKER_INDEX_FILE}: ${(_a = error == null ? void 0 : error.message) != null ? _a : "unknown error"}`);
+      this.eventBus.emit("settings-changed", { settings: this.settings });
+      return;
+    }
+    this.eventBus.emit("settings-changed", { settings: this.settings });
+    await this.taskScanner.fullScan();
+    await this.reconcilePhaseNotes();
+  }
+  async saveLegacySettings() {
     await this.saveData(this.settings);
     this.eventBus.emit("settings-changed", { settings: this.settings });
   }

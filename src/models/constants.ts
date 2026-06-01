@@ -2,6 +2,10 @@ import { QuadrantCode, PluginSettings } from './types';
 
 export const VIEW_TYPE_MATRIX = 'task-maker-matrix';
 
+export const TASK_MAKER_DATA_FOLDER = 'task-maker-data';
+
+export const TASK_MAKER_INDEX_FILE = `${TASK_MAKER_DATA_FOLDER}/index.json`;
+
 export const QUADRANT_CODES: QuadrantCode[] = ['ui', 'in', 'un', 'nn'];
 
 export const CHECKBOX_REGEX = /^(\s*- \[)([ xX])(\]\s+)(.+)$/;

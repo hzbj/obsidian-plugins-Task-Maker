@@ -121,6 +121,37 @@ export interface PluginSettings {
 	archiveCategories: ArchiveCategoryDef[];
 }
 
+// ============ Storage ============
+
+export interface VaultSettingsData {
+	version: 1;
+	triggerTags: string[];
+	tagNamespace: string;
+	phases: PhaseDefinition[];
+	phaseGroups: PhaseGroup[];
+	defaultSubdivisionUnit: SubdivisionUnit;
+	archiveBasePath: string;
+	archiveCategories: ArchiveCategoryDef[];
+	quadrantLabels: Record<QuadrantCode, string>;
+}
+
+export interface LocalSettingsData {
+	migrated: boolean;
+	ui: {
+		quadrantColors: Record<QuadrantCode, string>;
+		showSourceFile: boolean;
+		compactMode: boolean;
+		notePanel: {
+			enabled: boolean;
+			headings: string[];
+			defaultExpanded: boolean;
+		};
+		showOverviewSubdivisions: boolean;
+		showOverviewCustomSegments: boolean;
+		deadlineWarningDays: number;
+	};
+}
+
 // ============ Events ============
 
 export interface EventMap {

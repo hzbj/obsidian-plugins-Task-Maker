@@ -1,11 +1,17 @@
 import { Plugin, WorkspaceLeaf, TFile, TFolder, Notice } from 'obsidian';
-import { PluginSettings, DetectedPhaseInfo, PhaseDefinition } from './models/types';
-import { VIEW_TYPE_MATRIX, DEFAULT_SETTINGS } from './models/constants';
+import { PluginSettings, DetectedPhaseInfo, PhaseDefinition, LocalSettingsData } from './models/types';
+import { VIEW_TYPE_MATRIX, DEFAULT_SETTINGS, TASK_MAKER_INDEX_FILE } from './models/constants';
 import { EventBus } from './services/EventBus';
 import { TagManagerService } from './services/TagManagerService';
 import { TaskScannerService } from './services/TaskScannerService';
 import { ViewRegistryService } from './services/ViewRegistryService';
 import { ArchiveService } from './services/ArchiveService';
+import {
+	mergeSettings,
+	normalizeLocalSettingsData,
+	TaskMakerStorageManager,
+	toLocalSettingsData,
+} from './services/TaskMakerStorageManager';
 import { MatrixView } from './ui/MatrixView';
 import { SettingsTab } from './settings/SettingsTab';
 import { ArchiveModal } from './ui/components/ArchiveModal';
@@ -21,6 +27,8 @@ export default class TaskMakerPlugin extends Plugin {
 	private viewRegistry!: ViewRegistryService;
 	private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
 	private archiveService!: ArchiveService;
+	private storageManager!: TaskMakerStorageManager;
+	private localSettings: LocalSettingsData = normalizeLocalSettingsData(undefined);
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -99,7 +107,17 @@ export default class TaskMakerPlugin extends Plugin {
 		// Listen for file modifications for incremental scanning
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
-				if (file instanceof TFile && file.extension === 'md') {
+				if (!(file instanceof TFile)) return;
+
+				if (file.path === TASK_MAKER_INDEX_FILE) {
+					if (this.storageManager.isSavingPath(file.path)) return;
+					this.handleExternalSettingsChange().catch((e) => {
+						console.error('[TaskMaker] Failed to reload vault settings:', e);
+					});
+					return;
+				}
+
+				if (file.extension === 'md') {
 					this.taskScanner.incrementalScan(file);
 				}
 			})
@@ -127,6 +145,24 @@ export default class TaskMakerPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
+		const data = await this.loadData();
+		this.localSettings = normalizeLocalSettingsData(data);
+		this.storageManager = new TaskMakerStorageManager(this.app);
+		await this.storageManager.initialize(data);
+
+		if (this.storageManager.hasLoadError()) {
+			new Notice(`Task Maker 无法读取 ${TASK_MAKER_INDEX_FILE}，已使用默认业务数据`);
+		}
+
+		if (!this.localSettings.migrated) {
+			this.localSettings.migrated = true;
+			await this.saveData(this.localSettings);
+		}
+
+		this.settings = mergeSettings(this.storageManager.getSettings(), this.localSettings);
+	}
+
+	private async loadLegacySettings(): Promise<void> {
 		const data = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 		// Deep merge nested objects
@@ -158,6 +194,37 @@ export default class TaskMakerPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
+		this.localSettings = toLocalSettingsData(this.settings);
+		await this.saveData(this.localSettings);
+
+		try {
+			await this.storageManager.saveSettings(this.settings);
+		} catch (e) {
+			const message = e instanceof Error ? e.message : String(e);
+			console.error('[TaskMaker] Failed to save vault settings:', e);
+			new Notice(`Task Maker 业务数据保存失败: ${message}`);
+		}
+
+		this.eventBus.emit('settings-changed', { settings: this.settings });
+	}
+
+	private async handleExternalSettingsChange(): Promise<void> {
+		await this.storageManager.reloadIndex();
+		this.settings = mergeSettings(this.storageManager.getSettings(), this.localSettings);
+
+		if (this.storageManager.hasLoadError()) {
+			const error = this.storageManager.getLoadError();
+			new Notice(`Task Maker 无法读取 ${TASK_MAKER_INDEX_FILE}: ${error?.message ?? 'unknown error'}`);
+			this.eventBus.emit('settings-changed', { settings: this.settings });
+			return;
+		}
+
+		this.eventBus.emit('settings-changed', { settings: this.settings });
+		await this.taskScanner.fullScan();
+		await this.reconcilePhaseNotes();
+	}
+
+	private async saveLegacySettings(): Promise<void> {
 		await this.saveData(this.settings);
 		this.eventBus.emit('settings-changed', { settings: this.settings });
 	}
