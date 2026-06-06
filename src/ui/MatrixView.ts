@@ -53,7 +53,8 @@ export class MatrixView extends ItemView {
 		private onArchivePhase?: (phaseId: string) => void,
 		private onDeletePhase?: (phaseId: string) => void,
 		private saveSettings?: () => Promise<void>,
-		private onRestoreArchive?: () => void
+		private onRestoreArchive?: () => void,
+		private onClearPhaseFields?: (phaseId: string) => void
 	) {
 		super(leaf);
 
@@ -199,7 +200,8 @@ export class MatrixView extends ItemView {
 			() => this.refresh(),
 			this.onArchivePhase,
 			this.onDeletePhase,
-			this.onRestoreArchive
+			this.onRestoreArchive,
+			this.onClearPhaseFields
 		);
 
 		// Scan button + progress (inside navigator's scan host)
@@ -209,9 +211,12 @@ export class MatrixView extends ItemView {
 		this.refreshBtn.addEventListener('click', async () => {
 			this.refreshBtn!.disabled = true;
 			this.refreshBtn!.textContent = '\u626B\u63CF\u4E2D\u2026';
-			await this.taskScanner.fullScan();
-			this.refreshBtn!.disabled = false;
-			this.refreshBtn!.textContent = '\u626B\u63CF\u4EFB\u52A1';
+			try {
+				await (this.onRescan ? this.onRescan() : this.taskScanner.fullScan());
+			} finally {
+				this.refreshBtn!.disabled = false;
+				this.refreshBtn!.textContent = '\u626B\u63CF\u4EFB\u52A1';
+			}
 		});
 
 		this.progressWrapEl = scanHost.createDiv({ cls: 'tm-progress-wrap' });

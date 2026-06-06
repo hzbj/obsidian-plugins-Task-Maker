@@ -7,6 +7,10 @@ import { TaskScannerService } from './services/TaskScannerService';
 import { ViewRegistryService } from './services/ViewRegistryService';
 import { ArchiveService } from './services/ArchiveService';
 import {
+	clearTaskMakerPhaseFrontmatter,
+	removePhaseAssignmentTags,
+} from './services/TaskMakerFieldCleaner';
+import {
 	mergeSettings,
 	normalizeLocalSettingsData,
 	TaskMakerStorageManager,
@@ -61,7 +65,7 @@ export default class TaskMakerPlugin extends Plugin {
 				() => this.settings,
 				(file, id, label, start, end) => this.addPhaseToActiveNote(file, id, label, start, end),
 				(file, id, label, start, end) => this.completePhaseAttributes(file, id, label, start, end),
-				undefined,  // onRescan (not used here)
+				() => this.refreshPluginScan(),
 				(phaseId) => this.openArchiveModal(
 					this.settings.phases.find(p => p.id === phaseId)!
 				),
@@ -69,7 +73,13 @@ export default class TaskMakerPlugin extends Plugin {
 					this.deletePhaseWithNotes(phaseId);
 				},
 				() => this.saveSettings(),
-				() => this.openRestoreModal()
+				() => this.openRestoreModal(),
+				(phaseId) => {
+					this.clearPhaseFieldsWithoutDeleting(phaseId).catch((e) => {
+						console.error('[TaskMaker] Failed to clear phase fields:', e);
+						new Notice(`清除字段失败: ${(e as Error).message}`);
+					});
+				}
 			)
 		);
 
@@ -91,8 +101,7 @@ export default class TaskMakerPlugin extends Plugin {
 			id: 'rescan-tasks',
 			name: 'Rescan all tasks',
 			callback: async () => {
-				await this.taskScanner.fullScan();
-				await this.reconcilePhaseNotes();
+				await this.refreshPluginScan();
 			},
 		});
 
@@ -573,6 +582,68 @@ export default class TaskMakerPlugin extends Plugin {
 				onComplete?.();
 			}
 		).open();
+	}
+
+	private async refreshPluginScan(): Promise<void> {
+		await this.taskScanner.fullScan();
+		await this.reconcilePhaseNotes();
+	}
+
+	private async clearPhaseFieldsWithoutDeleting(phaseId: string): Promise<void> {
+		const phase = this.settings.phases.find(p => p.id === phaseId);
+		if (!phase) {
+			new Notice(`未找到阶段: ${phaseId}`);
+			return;
+		}
+
+		const notePaths = Array.from(new Set(
+			this.taskScanner.getPhaseNotes(phaseId).map(note => note.filePath)
+		));
+		let cleaned = 0;
+
+		for (const filePath of notePaths) {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (!(file instanceof TFile)) continue;
+
+			const metadataRefresh = this.waitForMetadataChange(file.path);
+			const cache = this.app.metadataCache.getFileCache(file);
+			if (cache?.frontmatter) {
+				await this.app.fileManager.processFrontMatter(file, (fm) => {
+					clearTaskMakerPhaseFrontmatter(fm);
+				});
+			}
+			await this.app.vault.process(file, (content) => {
+				return removePhaseAssignmentTags(content, phaseId, this.settings.tagNamespace);
+			});
+			await metadataRefresh;
+			cleaned++;
+		}
+
+		this.settings.phases = this.settings.phases.filter(p => p.id !== phaseId);
+		for (const group of this.settings.phaseGroups) {
+			group.phaseIds = group.phaseIds.filter(id => id !== phaseId);
+		}
+
+		await this.saveSettings();
+		await this.refreshPluginScan();
+		this.eventBus.emit('phase-deleted', { phaseId });
+		new Notice(`已清除阶段「${phase.label}」在 ${cleaned} 个关联笔记中的插件字段，未删除文件`);
+	}
+
+	private waitForMetadataChange(filePath: string): Promise<void> {
+		return new Promise(resolve => {
+			const timeout = setTimeout(() => {
+				this.app.metadataCache.off('changed', onChanged);
+				resolve();
+			}, 1000);
+			const onChanged = (file: TFile) => {
+				if (file.path !== filePath) return;
+				clearTimeout(timeout);
+				this.app.metadataCache.off('changed', onChanged);
+				resolve();
+			};
+			this.app.metadataCache.on('changed', onChanged);
+		});
 	}
 
 	private waitForMetadataCache(filePath: string): Promise<void> {

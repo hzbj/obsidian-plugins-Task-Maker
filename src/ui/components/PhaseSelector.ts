@@ -16,7 +16,8 @@ export class PhaseSelector {
 		private getSettings: () => PluginSettings,
 		private onArchivePhase?: (phaseId: string) => void,
 		private onDeletePhase?: (phaseId: string) => void,
-		private onRestoreArchive?: () => void
+		private onRestoreArchive?: () => void,
+		private onClearPhaseFields?: (phaseId: string) => void
 	) {
 		this.el = container.createDiv({ cls: 'tm-phase-selector' });
 		this.refresh();
@@ -196,6 +197,13 @@ export class PhaseSelector {
 					.setTitle('删除阶段')
 					.setIcon('trash')
 					.onClick(() => this.onDeletePhase!(phase.id))
+				);
+			}
+			if (this.onClearPhaseFields) {
+				menu.addItem(item => item
+					.setTitle('清除字段')
+					.setIcon('eraser')
+					.onClick(() => this.onClearPhaseFields!(phase.id))
 				);
 			}
 			menu.showAtMouseEvent(e);

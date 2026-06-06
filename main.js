@@ -640,6 +640,43 @@ var ViewRegistryService = class {
 
 // src/services/ArchiveService.ts
 var import_obsidian3 = require("obsidian");
+
+// src/services/TaskMakerFieldCleaner.ts
+var PHASE_FRONTMATTER_FIELDS = [
+  "phase",
+  "phase-id",
+  "phase-label",
+  "phase-start",
+  "phase-end"
+];
+function clearTaskMakerPhaseFrontmatter(frontmatter) {
+  for (const field of PHASE_FRONTMATTER_FIELDS) {
+    delete frontmatter[field];
+  }
+}
+function removePhaseAssignmentTags(content, phaseId, namespace) {
+  const tagRegex = buildPhaseAssignmentTagRegex(phaseId, namespace);
+  return content.split("\n").map((line) => removePhaseTagsFromLine(line, tagRegex)).join("\n");
+}
+function buildPhaseAssignmentTagRegex(phaseId, namespace) {
+  const trimmedNamespace = namespace.trim();
+  const prefix = trimmedNamespace ? `${escapeRegex(trimmedNamespace)}/` : "";
+  return new RegExp(`\\s*#${prefix}${escapeRegex(phaseId)}-(ui|in|un|nn|p1|p2)\\b`, "g");
+}
+function removePhaseTagsFromLine(line, tagRegex) {
+  const match = /^(\s*)(.*)$/.exec(line);
+  if (!match)
+    return line;
+  const [, leading, body] = match;
+  tagRegex.lastIndex = 0;
+  const cleanedBody = body.replace(tagRegex, "").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, "");
+  return `${leading}${cleanedBody}`;
+}
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// src/services/ArchiveService.ts
 var ArchiveService = class {
   constructor(app, eventBus, getSettings, saveSettings) {
     this.app = app;
@@ -859,31 +896,12 @@ var ArchiveService = class {
     const cache = this.app.metadataCache.getFileCache(file);
     if (cache == null ? void 0 : cache.frontmatter) {
       await this.app.fileManager.processFrontMatter(file, (fm) => {
-        delete fm.phase;
-        delete fm["phase-id"];
-        delete fm["phase-label"];
-        delete fm["phase-start"];
-        delete fm["phase-end"];
+        clearTaskMakerPhaseFrontmatter(fm);
       });
     }
-    const tagRegex = this.buildPhaseTagRegex(phaseId);
     await this.app.vault.process(file, (content) => {
-      return content.split("\n").map((line) => this.removePhaseTagsFromLine(line, tagRegex)).join("\n");
+      return removePhaseAssignmentTags(content, phaseId, this.getSettings().tagNamespace);
     });
-  }
-  buildPhaseTagRegex(phaseId) {
-    const namespace = this.getSettings().tagNamespace.trim();
-    const prefix = namespace ? `${this.escapeRegex(namespace)}/` : "";
-    return new RegExp(`\\s*#${prefix}${this.escapeRegex(phaseId)}-(ui|in|un|nn|p1|p2)\\b`, "g");
-  }
-  removePhaseTagsFromLine(line, tagRegex) {
-    const match = /^(\s*)(.*)$/.exec(line);
-    if (!match)
-      return line;
-    const [, leading, body] = match;
-    tagRegex.lastIndex = 0;
-    const cleanedBody = body.replace(tagRegex, "").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, "");
-    return `${leading}${cleanedBody}`;
   }
   async ensureFolder(path) {
     const existing = this.app.vault.getAbstractFileByPath(path);
@@ -946,9 +964,6 @@ var ArchiveService = class {
       } catch (e) {
       }
     }
-  }
-  escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 };
 
@@ -1255,7 +1270,7 @@ var DragDropManager = class {
 // src/ui/components/PhaseSelector.ts
 var import_obsidian4 = require("obsidian");
 var PhaseSelector = class {
-  constructor(container, viewRegistry, eventBus, getPhases, savePhases, getSettings, onArchivePhase, onDeletePhase, onRestoreArchive) {
+  constructor(container, viewRegistry, eventBus, getPhases, savePhases, getSettings, onArchivePhase, onDeletePhase, onRestoreArchive, onClearPhaseFields) {
     this.container = container;
     this.viewRegistry = viewRegistry;
     this.eventBus = eventBus;
@@ -1265,6 +1280,7 @@ var PhaseSelector = class {
     this.onArchivePhase = onArchivePhase;
     this.onDeletePhase = onDeletePhase;
     this.onRestoreArchive = onRestoreArchive;
+    this.onClearPhaseFields = onClearPhaseFields;
     this.currentViewId = "";
     this.el = container.createDiv({ cls: "tm-phase-selector" });
     this.refresh();
@@ -1416,6 +1432,11 @@ var PhaseSelector = class {
           (item) => item.setTitle("\u5220\u9664\u9636\u6BB5").setIcon("trash").onClick(() => this.onDeletePhase(phase.id))
         );
       }
+      if (this.onClearPhaseFields) {
+        menu.addItem(
+          (item) => item.setTitle("\u6E05\u9664\u5B57\u6BB5").setIcon("eraser").onClick(() => this.onClearPhaseFields(phase.id))
+        );
+      }
       menu.showAtMouseEvent(e);
     });
     return btn;
@@ -1508,7 +1529,7 @@ var PhaseSelector = class {
 
 // src/ui/components/ViewNavigator.ts
 var ViewNavigator = class {
-  constructor(container, viewRegistry, eventBus, getPhases, savePhases, getSettings, onAddPhase, onToggleFilter, onArchivePhase, onDeletePhase, onRestoreArchive) {
+  constructor(container, viewRegistry, eventBus, getPhases, savePhases, getSettings, onAddPhase, onToggleFilter, onArchivePhase, onDeletePhase, onRestoreArchive, onClearPhaseFields) {
     this.container = container;
     this.viewRegistry = viewRegistry;
     this.eventBus = eventBus;
@@ -1520,6 +1541,7 @@ var ViewNavigator = class {
     this.onArchivePhase = onArchivePhase;
     this.onDeletePhase = onDeletePhase;
     this.onRestoreArchive = onRestoreArchive;
+    this.onClearPhaseFields = onClearPhaseFields;
     this.hideCompleted = false;
     this.phaseCollapsed = false;
     this.timelineActive = false;
@@ -1566,7 +1588,7 @@ var ViewNavigator = class {
     });
     this.scanHostEl = topRow.createDiv({ cls: "tm-scan-host" });
     this.phaseControlsEl = this.el.createDiv({ cls: "tm-phase-controls" });
-    this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus, this.getPhases, this.savePhases, this.getSettings, onArchivePhase, onDeletePhase, onRestoreArchive);
+    this.phaseSelector = new PhaseSelector(this.phaseControlsEl, viewRegistry, eventBus, this.getPhases, this.savePhases, this.getSettings, onArchivePhase, onDeletePhase, onRestoreArchive, onClearPhaseFields);
     if (this.onAddPhase) {
       const addBtn = this.phaseControlsEl.createEl("button", {
         cls: "tm-add-phase-btn",
@@ -2885,7 +2907,7 @@ var InlineTimeline = class {
 
 // src/ui/MatrixView.ts
 var MatrixView = class extends import_obsidian9.ItemView {
-  constructor(leaf, eventBus, taskScanner, tagManager, viewRegistry, getSettings, onAddPhaseToNote, onCompletePhaseNote, onRescan, onArchivePhase, onDeletePhase, saveSettings, onRestoreArchive) {
+  constructor(leaf, eventBus, taskScanner, tagManager, viewRegistry, getSettings, onAddPhaseToNote, onCompletePhaseNote, onRescan, onArchivePhase, onDeletePhase, saveSettings, onRestoreArchive, onClearPhaseFields) {
     super(leaf);
     this.eventBus = eventBus;
     this.taskScanner = taskScanner;
@@ -2899,6 +2921,7 @@ var MatrixView = class extends import_obsidian9.ItemView {
     this.onDeletePhase = onDeletePhase;
     this.saveSettings = saveSettings;
     this.onRestoreArchive = onRestoreArchive;
+    this.onClearPhaseFields = onClearPhaseFields;
     this.currentViewId = "";
     this.timelineActive = false;
     this.navigator = null;
@@ -3034,7 +3057,8 @@ var MatrixView = class extends import_obsidian9.ItemView {
       () => this.refresh(),
       this.onArchivePhase,
       this.onDeletePhase,
-      this.onRestoreArchive
+      this.onRestoreArchive,
+      this.onClearPhaseFields
     );
     const scanHost = this.navigator.getScanHost();
     this.refreshBtn = scanHost.createEl("button", { cls: "tm-refresh-btn" });
@@ -3042,9 +3066,12 @@ var MatrixView = class extends import_obsidian9.ItemView {
     this.refreshBtn.addEventListener("click", async () => {
       this.refreshBtn.disabled = true;
       this.refreshBtn.textContent = "\u626B\u63CF\u4E2D\u2026";
-      await this.taskScanner.fullScan();
-      this.refreshBtn.disabled = false;
-      this.refreshBtn.textContent = "\u626B\u63CF\u4EFB\u52A1";
+      try {
+        await (this.onRescan ? this.onRescan() : this.taskScanner.fullScan());
+      } finally {
+        this.refreshBtn.disabled = false;
+        this.refreshBtn.textContent = "\u626B\u63CF\u4EFB\u52A1";
+      }
     });
     this.progressWrapEl = scanHost.createDiv({ cls: "tm-progress-wrap" });
     this.progressWrapEl.style.display = "none";
@@ -4044,8 +4071,7 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
         () => this.settings,
         (file, id, label, start, end) => this.addPhaseToActiveNote(file, id, label, start, end),
         (file, id, label, start, end) => this.completePhaseAttributes(file, id, label, start, end),
-        void 0,
-        // onRescan (not used here)
+        () => this.refreshPluginScan(),
         (phaseId) => this.openArchiveModal(
           this.settings.phases.find((p) => p.id === phaseId)
         ),
@@ -4053,7 +4079,13 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
           this.deletePhaseWithNotes(phaseId);
         },
         () => this.saveSettings(),
-        () => this.openRestoreModal()
+        () => this.openRestoreModal(),
+        (phaseId) => {
+          this.clearPhaseFieldsWithoutDeleting(phaseId).catch((e) => {
+            console.error("[TaskMaker] Failed to clear phase fields:", e);
+            new import_obsidian14.Notice(`\u6E05\u9664\u5B57\u6BB5\u5931\u8D25: ${e.message}`);
+          });
+        }
       )
     );
     this.addRibbonIcon("layout-grid", "Task Maker Matrix", () => {
@@ -4070,8 +4102,7 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
       id: "rescan-tasks",
       name: "Rescan all tasks",
       callback: async () => {
-        await this.taskScanner.fullScan();
-        await this.reconcilePhaseNotes();
+        await this.refreshPluginScan();
       }
     });
     this.addSettingTab(new SettingsTab(
@@ -4503,6 +4534,62 @@ var TaskMakerPlugin = class extends import_obsidian14.Plugin {
         onComplete == null ? void 0 : onComplete();
       }
     ).open();
+  }
+  async refreshPluginScan() {
+    await this.taskScanner.fullScan();
+    await this.reconcilePhaseNotes();
+  }
+  async clearPhaseFieldsWithoutDeleting(phaseId) {
+    const phase = this.settings.phases.find((p) => p.id === phaseId);
+    if (!phase) {
+      new import_obsidian14.Notice(`\u672A\u627E\u5230\u9636\u6BB5: ${phaseId}`);
+      return;
+    }
+    const notePaths = Array.from(new Set(
+      this.taskScanner.getPhaseNotes(phaseId).map((note) => note.filePath)
+    ));
+    let cleaned = 0;
+    for (const filePath of notePaths) {
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (!(file instanceof import_obsidian14.TFile))
+        continue;
+      const metadataRefresh = this.waitForMetadataChange(file.path);
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (cache == null ? void 0 : cache.frontmatter) {
+        await this.app.fileManager.processFrontMatter(file, (fm) => {
+          clearTaskMakerPhaseFrontmatter(fm);
+        });
+      }
+      await this.app.vault.process(file, (content) => {
+        return removePhaseAssignmentTags(content, phaseId, this.settings.tagNamespace);
+      });
+      await metadataRefresh;
+      cleaned++;
+    }
+    this.settings.phases = this.settings.phases.filter((p) => p.id !== phaseId);
+    for (const group of this.settings.phaseGroups) {
+      group.phaseIds = group.phaseIds.filter((id) => id !== phaseId);
+    }
+    await this.saveSettings();
+    await this.refreshPluginScan();
+    this.eventBus.emit("phase-deleted", { phaseId });
+    new import_obsidian14.Notice(`\u5DF2\u6E05\u9664\u9636\u6BB5\u300C${phase.label}\u300D\u5728 ${cleaned} \u4E2A\u5173\u8054\u7B14\u8BB0\u4E2D\u7684\u63D2\u4EF6\u5B57\u6BB5\uFF0C\u672A\u5220\u9664\u6587\u4EF6`);
+  }
+  waitForMetadataChange(filePath) {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.app.metadataCache.off("changed", onChanged);
+        resolve();
+      }, 1e3);
+      const onChanged = (file) => {
+        if (file.path !== filePath)
+          return;
+        clearTimeout(timeout);
+        this.app.metadataCache.off("changed", onChanged);
+        resolve();
+      };
+      this.app.metadataCache.on("changed", onChanged);
+    });
   }
   waitForMetadataCache(filePath) {
     return new Promise((resolve) => {

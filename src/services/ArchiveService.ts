@@ -1,6 +1,10 @@
 import { App, TFile, TFolder, Notice } from 'obsidian';
 import { PluginSettings, ArchivedItem, PhaseDefinition } from '../models/types';
 import { EventBus } from './EventBus';
+import {
+	clearTaskMakerPhaseFrontmatter,
+	removePhaseAssignmentTags,
+} from './TaskMakerFieldCleaner';
 
 export class ArchiveService {
 	constructor(
@@ -261,37 +265,13 @@ export class ArchiveService {
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (cache?.frontmatter) {
 			await this.app.fileManager.processFrontMatter(file, (fm) => {
-				delete fm.phase;
-				delete fm['phase-id'];
-				delete fm['phase-label'];
-				delete fm['phase-start'];
-				delete fm['phase-end'];
+				clearTaskMakerPhaseFrontmatter(fm);
 			});
 		}
 
-		const tagRegex = this.buildPhaseTagRegex(phaseId);
 		await this.app.vault.process(file, (content) => {
-			return content.split('\n').map(line => this.removePhaseTagsFromLine(line, tagRegex)).join('\n');
+			return removePhaseAssignmentTags(content, phaseId, this.getSettings().tagNamespace);
 		});
-	}
-
-	private buildPhaseTagRegex(phaseId: string): RegExp {
-		const namespace = this.getSettings().tagNamespace.trim();
-		const prefix = namespace ? `${this.escapeRegex(namespace)}/` : '';
-		return new RegExp(`\\s*#${prefix}${this.escapeRegex(phaseId)}-(ui|in|un|nn|p1|p2)\\b`, 'g');
-	}
-
-	private removePhaseTagsFromLine(line: string, tagRegex: RegExp): string {
-		const match = /^(\s*)(.*)$/.exec(line);
-		if (!match) return line;
-
-		const [, leading, body] = match;
-		tagRegex.lastIndex = 0;
-		const cleanedBody = body
-			.replace(tagRegex, '')
-			.replace(/[ \t]{2,}/g, ' ')
-			.replace(/[ \t]+$/g, '');
-		return `${leading}${cleanedBody}`;
 	}
 
 	private async ensureFolder(path: string): Promise<void> {
@@ -362,9 +342,5 @@ export class ArchiveService {
 				// Folder may not be empty or may already be gone.
 			}
 		}
-	}
-
-	private escapeRegex(str: string): string {
-		return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	}
 }
