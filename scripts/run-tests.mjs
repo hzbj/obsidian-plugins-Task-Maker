@@ -3,7 +3,10 @@ import { spawnSync } from "node:child_process";
 import esbuild from "esbuild";
 
 const outdir = ".tmp-tests";
-const testFiles = ["tests/taskMakerFieldCleaner.test.ts"];
+const testFiles = [
+	"tests/taskMakerFieldCleaner.test.ts",
+	"tests/taskPriorityService.test.ts",
+];
 const bundledTests = [];
 
 await rm(outdir, { recursive: true, force: true });
