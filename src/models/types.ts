@@ -39,8 +39,8 @@ export interface Task {
 	quadrantAssignments: Record<string, QuadrantCode>;
 	/** Tab-based indent depth (0 = no indent, 1 = one tab, etc.) */
 	indentLevel: number;
-	/** viewId -> priority level (1=第一任务, 2=第二任务, 0或undefined=无优先级) */
-	priorityAssignments: Record<string, number>;
+	/** Global priority parsed from Dataview field, 1=highest, 4=low */
+	priority?: number;
 }
 
 // ============ Task Tree ============

@@ -3,6 +3,7 @@ import { Task, QuadrantCode, PluginSettings, DetectedPhaseInfo, PhaseNoteInfo } 
 import { CHECKBOX_REGEX } from '../models/constants';
 import { TagManagerService } from './TagManagerService';
 import { EventBus } from './EventBus';
+import { parseDataviewPriority } from './TaskPriorityService';
 
 export class TaskScannerService {
 	private taskCache: Map<string, Task[]> = new Map(); // filePath -> tasks
@@ -114,7 +115,7 @@ export class TaskScannerService {
 			}
 
 			const quadrantAssignments = this.tagManager.parseQuadrantTags(line);
-			const priorityAssignments = this.tagManager.parsePriorityTags(line);
+			const priority = parseDataviewPriority(line);
 			const text = this.tagManager.cleanDisplayText(line, settings.triggerTags);
 			const indentLevel = (line.match(/^\t*/)?.[0] ?? '').length;
 
@@ -127,8 +128,8 @@ export class TaskScannerService {
 				completed,
 				triggerType: shouldForce ? 'frontmatter' : (hasFrontmatterTrigger ? 'frontmatter' : 'inline'),
 				quadrantAssignments,
-				priorityAssignments,
 				indentLevel,
+				priority,
 			});
 		}
 

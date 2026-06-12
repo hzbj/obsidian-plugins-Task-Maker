@@ -5,6 +5,7 @@ import { EventBus } from '../../services/EventBus';
 import { DragDropManager } from '../DragDropManager';
 import { TaskItem } from './TaskItem';
 import { buildTaskForest, countDescendants } from '../utils/TaskTreeBuilder';
+import { sortTasksByPriority } from '../../services/TaskPriorityService';
 
 export class QuadrantCell {
 	el: HTMLElement;
@@ -49,11 +50,7 @@ export class QuadrantCell {
 		this.taskListEl.empty();
 		this.countEl.textContent = `${tasks.length}`;
 
-		const sorted = [...tasks].sort((a, b) => {
-			const pa = a.priorityAssignments[viewId] || 99;
-			const pb = b.priorityAssignments[viewId] || 99;
-			return pa - pb;
-		});
+		const sorted = sortTasksByPriority(tasks);
 		const forest = buildTaskForest(sorted);
 		for (const node of forest) {
 			this.renderNode(this.taskListEl, node, collapsedIds, onToggleCollapse);
